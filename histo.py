@@ -5,6 +5,8 @@ from sys import stdout
 import shelve
 import string
 
+letters = string.lowercase + '@-'
+
 def ok(w):
   return len(w) >= 2
 
@@ -12,7 +14,7 @@ def lettersplit(s):
   r = []
   w = ''
   for c in s:
-    if c not in string.letters:
+    if c not in letters:
       if w != '':
         r.append(w)
         w = ''

@@ -7,10 +7,10 @@ import shelve
 with closing(shelve.open('statuses/data', 'c')) as db:
   with closing(shelve.open('statuses/index', 'c')) as idx:
     i = 0
-    statuses = db.keys()
+    statuses = [int(x) for x in db.keys()]
     statuses.sort()
     for s in statuses:
-      idx[str(i)] = s
+      idx[str(i)] = str(s)
       i += 1
 with open('statuses/indexsize', 'w') as f:
   f.write(str(i) + '\n')

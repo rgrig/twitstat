@@ -27,6 +27,8 @@ def savePage(db, idx, results):
       user = r['from_user']
       text = r['text']
       id = int(r['id'])
+      if str(id) in db:
+        continue
       if lid < id:
         lid = id
       time = timegm(strptime(r['created_at'], '%a, %d %b %Y %H:%M:%S +0000'))

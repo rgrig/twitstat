@@ -35,9 +35,11 @@ with closing(shelve.open('statuses/data', 'c')) as db:
         high = middle
     low += 1
     while low < size:
-      status = db[idx[str(low)]]
+      id = idx[str(low)]
+      status = db[id]
       if status['time'] >= stop_time:
         break
+      stdout.write(id + ' ')
       stdout.write(status['user'].encode('utf-8') + ': ')
       stdout.write(status['text'].encode('utf-8').replace('\n', '  '))
       stdout.write('\n')

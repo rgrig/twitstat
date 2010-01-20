@@ -25,18 +25,20 @@ with open('statuses/indexsize', 'r') as f:
 
 with closing(shelve.open('statuses/data', 'c')) as db:
   with closing(shelve.open('statuses/index', 'c')) as idx:
-    low, high = 0, size
-    while low + 1 != high:
+    low, high = -1, size
+    while low + 1 < high:
       middle = (low + high) / 2
       status_time = db[idx[str(middle)]]['time']
       if status_time < start_time:
         low = middle
       else:
         high = middle
+    low += 1
     while low < size:
       status = db[idx[str(low)]]
       if status['time'] >= stop_time:
         break
+      stdout.write(status['user'].encode('utf-8') + ': ')
       stdout.write(status['text'].encode('utf-8').replace('\n', '  '))
       stdout.write('\n')
       low += 1

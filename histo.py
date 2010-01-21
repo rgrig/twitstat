@@ -6,7 +6,7 @@ from sys import argv, exit, stdin, stdout
 import shelve
 import string
 
-letters = unicode(string.letters + '@-ăîÎșşȘțţȚŢâÂăĂ', 'utf-8')
+letters = unicode(string.letters + '@-_#ăîÎșşȘțţȚŢâÂăĂ', 'utf-8')
 romnice = unicode('ăîÎșşȘțţȚŢâÂăĂ', 'utf-8')
 romugly = unicode('aiIssSttTTaAaA', 'utf-8')
 vowels = 'aeiou'

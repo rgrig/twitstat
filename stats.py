@@ -6,7 +6,7 @@ from contextlib import closing
 from re import finditer
 import shelve
 from sys import argv, exit, stderr, stdout
-from time import localtime, mktime, strftime, struct_time
+from time import localtime, mktime, strftime, struct_time, time
 
 USAGE = """usage: ./stats.py [start_time [stop_time]]
 
@@ -33,6 +33,13 @@ The program creates three files.
 
 The program expects a database of Twitter statuses in ./statuses.
 """
+
+proftime = time()
+def here(s):
+  global proftime
+  nt = time()
+  print s, nt - proftime
+  proftime = nt
 
 # These are utilities for building regular expressions.
 def opt(s): 
@@ -153,6 +160,8 @@ if start_time >= stop_time:
   stderr.write('Void time interval.\n')
   exit(2)
 
+here('initializare')
+
 # Go through the database and generate the file transcript.txt.
 # At the same time make a list, for each user, with its statuses.
 with open('statuses/indexsize', 'r') as f:
@@ -168,6 +177,7 @@ with closing(shelve.open('statuses/data', 'c')) as db:
       else:
         high = middle
     low += 1
+    here('binsearch')
     with open('transcript.txt', 'w') as transcript:
       while low < size:
         id = idx[str(low)]
@@ -183,8 +193,12 @@ with closing(shelve.open('statuses/data', 'c')) as db:
         transcript.write('\n')
         low += 1
 
+here('extracted and binned')
+
 # now compute histograms for words and for urls
 with open('words.txt', 'w') as f:
   compute_histogram(WORD_REGEX, normalize_word, f)
+here('words.txt')
 with open('urls.txt', 'w') as f:
   compute_histogram(URL_REGEX, normalize_url, f)
+here('urls.txt')

@@ -45,7 +45,7 @@ def alt(l):
 ROMNICE = u'ăîÎșşȘțţȚŢâÂăĂ'
 ROMUGLY = u'aiIssSttTTaAaA'
 ROMSIMPL = dict([(ROMNICE[i], ROMUGLY[i]) for i in xrange(len(ROMNICE))])
-WORD_REGEX = u'[a-zA-Z0-9' + ROMNICE + u'@#_-]{3,}'
+WORD_REGEX = u'[@#]?[a-zA-Z0-9' + ROMNICE + u'_-]{3,}'
 # see RFC1738
 hex = '[0-9a-fA-F]'
 escape = '%' + hex + hex

@@ -7,6 +7,7 @@ from re import finditer
 import shelve
 from sys import argv, exit, stderr, stdout
 from time import localtime, mktime, strftime, struct_time, time
+from urllib2 import urlopen
 
 USAGE = """usage: ./stats.py [start_time [stop_time]]
 
@@ -85,11 +86,12 @@ def parse_time(s):
       int(t[10:12]),
       int(t[12:14]),
       0,0,-1)))
-  except Exception as e:
+  except Exception as e:  # TODO: be more specific
     stderr.write(USAGE)
     stderr.write('I cannot parse the time {0}: {1}\n'.format(s, str(e)))
     exit(3)
 
+# TODO: this is SLOW
 def normalize_word(w):
   def romsimpl(c):
     if c not in ROMSIMPL:
@@ -100,8 +102,13 @@ def normalize_word(w):
   return w
 
 def normalize_url(u):
-  # TODO: follow redirects
-  return u
+  # TODO: Cache in a database to speed up
+  print u
+  try:
+    uf = urlopen(u, timeout=2)
+    return uf.geturl()
+  except Exception:
+    return u
 
 statuses_of_user = dict()
 

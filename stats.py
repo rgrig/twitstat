@@ -103,11 +103,12 @@ def normalize_word(w):
   return (w, wn)
 
 def normalize_url(u):
-  un = u.encode('utf-8')
   try:
     un = urlopen(u, timeout=10).geturl()
-  except Exception:
-    pass
+  except Exception as e:
+    un = u
+  if isinstance(un, unicode):
+    un = un.encode('utf-8')
   return (u, un)
 
 def normalize_all_words(l):

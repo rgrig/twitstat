@@ -139,7 +139,7 @@ def compute_histogram(regex, normalize, file):
       if m not in users:
         users[m] = set()
       users[m].add(user)
-  list = [(len(us), m) for m, us in users.items()]
+  list = [(len(us), m) for m, us in users.iteritems()]
   list.sort()
   list.reverse()
   for n, m in list:

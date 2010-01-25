@@ -98,47 +98,85 @@ def normalize_word(w):
     if c not in ROMSIMPL:
       return c
     return ROMSIMPL[c]
-  w = ''.join([romsimpl(c) for c in w]) 
-  w = w.lower()
-  return w
+  wn = ''.join([romsimpl(c) for c in w]) 
+  wn = wn.lower()
+  return (w, wn)
 
 def normalize_url(u):
-  # TODO: Cache in a database to speed up
-  print u
-  return u
+  un = u.encode('utf-8')
   try:
-    uf = urlopen(u, timeout=2)
-    return uf.geturl()
+    un = urlopen(u, timeout=10).geturl()
   except Exception:
-    return u
+    pass
+  return (u, un)
+
+def normalize_all_words(l):
+  r = dict()
+  processes = Pool()
+  for _, s in l:
+    for w, wn in processes.imap_unordered(normalize_word, s):
+      r[w] = wn
+  return r
+
+def normalize_all_urls(l):
+  r = dict()
+  with closing(shelve.open('statuses/urls', 'c')) as cache:
+    all_urls = set()
+    for _, s in l:
+      for u in s:
+        all_urls.add(u)
+    print '  ', len(all_urls), 'urls to normalize'
+    unknown_urls = []
+    for u in all_urls:
+      try:
+        r[u] = cache[u.encode('utf-8')]
+      except KeyError:
+        unknown_urls.append(u)
+    print '  ', len(unknown_urls), 'urls to normalize online'
+    processes = Pool(100)
+    for u, un in processes.imap_unordered(normalize_url, unknown_urls, 10):
+      r[u] = un
+      cache[u.encode('utf-8')] = un
+  return r
+
+def dummy_normalize(l):
+  r = dict()
+  for _, s in l:
+    for m in s:
+      r[m] = m
+  return r
 
 statuses_of_user = dict()
 
 def compute_histogram(regex, normalize, file):
-  users = dict()
-  forms = dict()
   # construct a list of sets of matches
   pattern = re.compile(regex)
+  matches = []
   for user, statuses in statuses_of_user.iteritems():
+    user_matches = set()
     for s in statuses:
       for m in re.finditer(pattern, s):
-        print 'TODO'
-  for user, statuses in statuses_of_user.items():
-    text = '\n'.join(statuses)
-    matches = set()
-    for m in re.finditer(regex, text):
-      t = m.group()
-      tn = normalize(t)
-      if tn in STOPWORDS:
+        user_matches.add(m.group())
+    matches.append((user, user_matches))
+  normalized = normalize(matches)
+
+  # for each normalized match keep the set of users
+  # also, compute forms, the inverse of normalized
+  users = dict()
+  forms = dict()
+  for user, user_matches in matches:
+    for m in user_matches:
+      mn = normalized[m]
+      if mn in STOPWORDS:
         continue
-      matches.add(tn)
-      if tn not in forms:
-        forms[tn] = set()
-      forms[tn].add(t)
-    for m in matches:
-      if m not in users:
-        users[m] = set()
-      users[m].add(user)
+      if mn not in forms:
+        forms[mn] = set()
+        users[mn] = set()
+      forms[mn].add(m)
+      users[mn].add(user)
+
+  # sort by the number of users mentioning each match
+  # and report to file
   list = [(len(us), m) for m, us in users.iteritems()]
   list.sort()
   list.reverse()
@@ -150,11 +188,11 @@ def compute_histogram(regex, normalize, file):
     for author in users[m]:
       file.write(' ')
       file.write(author.encode('utf-8'))
-    file.write(') (')
+    file.write(' ) (')
     for form in forms[m]:
       file.write(' ')
       file.write(form.encode('utf-8'))
-    file.write(')\n')
+    file.write(' )\n')
 
 ### The main program starts here.
 
@@ -212,8 +250,8 @@ here('extracted and binned')
 
 # now compute histograms for words and for urls
 with open('words.txt', 'w') as f:
-  compute_histogram(WORD_REGEX, normalize_word, f)
+  compute_histogram(WORD_REGEX, normalize_all_words, f)
 here('words.txt')
 with open('urls.txt', 'w') as f:
-  compute_histogram(URL_REGEX, normalize_url, f)
+  compute_histogram(URL_REGEX, normalize_all_urls, f)
 here('urls.txt')

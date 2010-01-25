@@ -3,7 +3,8 @@
 
 from calendar import timegm
 from contextlib import closing
-from re import finditer
+from multiprocessing import Pool
+import re
 import shelve
 from sys import argv, exit, stderr, stdout
 from time import localtime, mktime, strftime, struct_time, time
@@ -104,6 +105,7 @@ def normalize_word(w):
 def normalize_url(u):
   # TODO: Cache in a database to speed up
   print u
+  return u
   try:
     uf = urlopen(u, timeout=2)
     return uf.geturl()
@@ -115,10 +117,16 @@ statuses_of_user = dict()
 def compute_histogram(regex, normalize, file):
   users = dict()
   forms = dict()
+  # construct a list of sets of matches
+  pattern = re.compile(regex)
+  for user, statuses in statuses_of_user.iteritems():
+    for s in statuses:
+      for m in re.finditer(pattern, s):
+        print 'TODO'
   for user, statuses in statuses_of_user.items():
     text = '\n'.join(statuses)
     matches = set()
-    for m in finditer(regex, text):
+    for m in re.finditer(regex, text):
       t = m.group()
       tn = normalize(t)
       if tn in STOPWORDS:

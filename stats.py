@@ -92,7 +92,6 @@ def parse_time(s):
     stderr.write('I cannot parse the time {0}: {1}\n'.format(s, str(e)))
     exit(3)
 
-# TODO: this is SLOW
 def normalize_word(w):
   def romsimpl(c):
     if c not in ROMSIMPL:
@@ -100,6 +99,8 @@ def normalize_word(w):
     return ROMSIMPL[c]
   wn = ''.join([romsimpl(c) for c in w]) 
   wn = wn.lower()
+  if isinstance(wn, unicode):
+    wn = wn.encode('utf-8')
   return (w, wn)
 
 def normalize_url(u):
@@ -184,7 +185,7 @@ def compute_histogram(regex, normalize, file):
   for n, m in list:
     file.write(str(n))
     file.write(' ')
-    file.write(m.encode('utf-8'))
+    file.write(m)
     file.write(' (')
     for author in users[m]:
       file.write(' ')

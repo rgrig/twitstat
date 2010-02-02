@@ -1,8 +1,10 @@
 #!/usr/bin/env python2
 # vim: set fileencoding=utf-8 :
 
+from heapq import heappop, heappush
 from random import randint
 from sys import argv, exit, stderr, stdin
+from time import time
 
 def parse_command():
   if len(argv) != 2:
@@ -61,6 +63,7 @@ def union(boss, x, y):
   boss[find(boss, x)] = find(boss, y)
 
 def max_cut_clustering(g):
+  t1 = time()
   boss = range(len(g))
   nodes = range(1, len(g))
   nodes.sort(lambda x, y: cmp(len(g[y]), len(g[x])))
@@ -95,6 +98,10 @@ def max_cut_clustering(g):
     touched.update(seen)
     for y in seen:
       union(boss, x, y)
+    t2 = time()
+    if t2 - t1 > 10:
+      t1 = t2
+      stderr.write('{0: >4.0%} done\n'.format(float(len(touched))/len(g)))
   clusters = dict()
   for i in xrange(1, len(g)):
     rep = find(boss, i)
@@ -102,6 +109,27 @@ def max_cut_clustering(g):
       clusters[rep] = set()
     clusters[rep].add(i)
   return clusters.values()
+
+def order_cluster(g, cluster):
+  dist_sum = dict()
+  for x in cluster:
+    dist = dict()
+    q = [(x, 0)]
+    while len(q) > 0:
+      d, y = heappop(q)
+      if y in dist:
+        continue
+      dist[y] = d
+      for z, w in g[y].iteritems():
+        if z not in dist and z in cluster:
+          heappush(q, (w + d, z))
+    sum = 0
+    for y in dist.itervalues():
+      sum += y
+    dist_sum[x] = sum
+  result = list(cluster)
+  result.sort(lambda x, y: cmp(dist_sum[x], dist_sum[y]))
+  return result
 
 def main():
   alpha = parse_command()
@@ -111,8 +139,9 @@ def main():
   clusters.sort(lambda x, y: cmp(len(y), len(x)))
   with open('groups.txt', 'w') as file:
     for us in clusters:
-      file.write(str(len(us)))
-      for u in us:
+      ous = order_cluster(graph, us)
+      file.write(str(len(ous)))
+      for u in ous:
         file.write(' ')
         file.write(name_of_index[u])
       file.write('\n')

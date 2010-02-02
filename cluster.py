@@ -63,6 +63,7 @@ def union(boss, x, y):
   boss[find(boss, x)] = find(boss, y)
 
 def max_cut_clustering(g):
+  stderr.write('processing {0} users\n'.format(len(g)))
   t1 = time()
   boss = range(len(g))
   nodes = range(1, len(g))
@@ -88,8 +89,11 @@ def max_cut_clustering(g):
       if y != 0:  # no new path found
         break
       w = float('inf')
+      #stderr.write('add path')
       while y != x:
+        #stderr.write(' {0}({1})'.format(y, g[pred[y]][y]))
         w, y = min(w, g[pred[y]][y]), pred[y]
+      #stderr.write(' [{0}]\n'.format(w))
       y = 0
       while y != x:
         rn[pred[y]][y] -= w

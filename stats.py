@@ -150,7 +150,11 @@ def dummy_normalize(l):
 
 statuses_of_user = dict()
 
-def compute_histogram(regex, normalize, file):
+def match_and_bin(regex, normalize):
+  '''Find all the matches for regex. For each normalized match it
+  computes who said it. For each normalized match it remembers all
+  the non-normalized forms.'''
+
   # construct a list of sets of matches
   pattern = re.compile(regex)
   matches = []
@@ -176,84 +180,123 @@ def compute_histogram(regex, normalize, file):
         users[mn] = set()
       forms[mn].add(m)
       users[mn].add(user)
+  return (users, forms)
 
-  # sort by the number of users mentioning each match
-  # and report to file
-  list = [(len(us), m) for m, us in users.iteritems()]
-  list.sort()
-  list.reverse()
-  for n, m in list:
-    file.write(str(n))
-    file.write(' ')
-    file.write(m)
-    file.write(' (')
-    for author in users[m]:
+def dump_histogram(users, forms, filename):
+  '''sort by the number of users mentioning each match
+  and report to file'''
+  with open(filename, 'w') as file:
+    list = [(len(us), m) for m, us in users.iteritems()]
+    list.sort()
+    list.reverse()
+    for n, m in list:
+      file.write(str(n))
       file.write(' ')
-      file.write(author.encode('utf-8'))
-    file.write(' ) (')
-    for form in forms[m]:
-      file.write(' ')
-      file.write(form.encode('utf-8'))
-    file.write(' )\n')
+      file.write(m)
+      file.write(' (')
+      for author in users[m]:
+        file.write(' ')
+        file.write(author.encode('utf-8'))
+      file.write(' ) (')
+      for form in forms[m]:
+        file.write(' ')
+        file.write(form.encode('utf-8'))
+      file.write(' )\n')
 
-### The main program starts here.
+def compute_histogram(regex, normalize, filename):
+  users, forms = match_and_bin(regex, normalize)
+  dump_histogram(users, forms, filename)
 
-# Parse the command line.
-if len(argv) == 1:
-  start_time = parse_time(strftime('%Y%02m%02d', localtime()))
-  stop_time = start_time + 60 * 60 * 24
-elif len(argv) == 2:
-  start_time = parse_time(argv[1])
-  stop_time = start_time + 60 * 60 * 24
-elif len(argv) == 3:
-  start_time = parse_time(argv[1])
-  stop_time = parse_time(argv[2])
-else:
-  stderr.write(USAGE)
-  exit(1)
-if start_time >= stop_time:
-  stderr.write('Void time interval.\n')
-  exit(2)
+### The main parts of the program.
+def parse_command_line():
+  global start_time
+  global stop_time
+  if len(argv) == 1:
+    start_time = parse_time(strftime('%Y%02m%02d', localtime()))
+    stop_time = start_time + 60 * 60 * 24
+  elif len(argv) == 2:
+    start_time = parse_time(argv[1])
+    stop_time = start_time + 60 * 60 * 24
+  elif len(argv) == 3:
+    start_time = parse_time(argv[1])
+    stop_time = parse_time(argv[2])
+  else:
+    stderr.write(USAGE)
+    exit(1)
+  if start_time >= stop_time:
+    stderr.write('Void time interval.\n')
+    exit(2)
 
-here('initializare')
+def extract_and_bin():
+  '''Go through the database and generate the file transcript.txt.
+  At the same time make a list, for each user, with its statuses.'''
+  global start_time
+  global stop_time
+  binstep = 0
+  with open('statuses/indexsize', 'r') as f:
+    size = int(f.readline())
+  with closing(shelve.open('statuses/data', 'c')) as db:
+    with closing(shelve.open('statuses/index', 'c')) as idx:
+      low, high = -1, size
+      print start_time, stop_time
+      while low + 1 < high:
+        binstep += 1
+        middle = (low + high) / 2
+        status_time = db[idx[str(middle)]]['time']
+        if status_time < start_time:
+          low = middle
+        else:
+          high = middle
+      print 'binstep',binstep
+      low += 1
+      here('binsearch')
+      with open('transcript.txt', 'w') as transcript:
+        while low < size:
+          id = idx[str(low)]
+          status = db[id]
+          if status['time'] >= stop_time:
+            break
+          if status['user'] not in statuses_of_user:
+            statuses_of_user[status['user']] = []
+          statuses_of_user[status['user']].append(status['text'])
+          transcript.write(id + ' ')
+          transcript.write(status['user'].encode('utf-8') + ': ')
+          transcript.write(status['text'].encode('utf-8').replace('\n', '  '))
+          transcript.write('\n')
+          low += 1
 
-# Go through the database and generate the file transcript.txt.
-# At the same time make a list, for each user, with its statuses.
-with open('statuses/indexsize', 'r') as f:
-  size = int(f.readline())
-with closing(shelve.open('statuses/data', 'c')) as db:
-  with closing(shelve.open('statuses/index', 'c')) as idx:
-    low, high = -1, size
-    while low + 1 < high:
-      middle = (low + high) / 2
-      status_time = db[idx[str(middle)]]['time']
-      if status_time < start_time:
-        low = middle
-      else:
-        high = middle
-    low += 1
-    here('binsearch')
-    with open('transcript.txt', 'w') as transcript:
-      while low < size:
-        id = idx[str(low)]
-        status = db[id]
-        if status['time'] >= stop_time:
-          break
-        if status['user'] not in statuses_of_user:
-          statuses_of_user[status['user']] = []
-        statuses_of_user[status['user']].append(status['text'])
-        transcript.write(id + ' ')
-        transcript.write(status['user'].encode('utf-8') + ': ')
-        transcript.write(status['text'].encode('utf-8').replace('\n', '  '))
-        transcript.write('\n')
-        low += 1
+def compute_talkgraph(users):
+  mentions = dict()
+  for w, us in users.iteritems():
+    if w.startswith('@'):
+      _, wn = normalize_word(w[1:])
+      for u in us:
+        if u not in mentions:
+          mentions[u] = set()
+        mentions[u].add(wn)
+  with open('talkgraph.txt', 'w') as file:
+    for x, ys in mentions.iteritems():
+      file.write(x)
+      file.write(' ->')
+      for y in ys:
+        file.write(' ')
+        file.write(y)
+      file.write('\n')
 
-here('extracted and binned')
+def main():
+  parse_command_line()
+  here('initializare')
+  extract_and_bin()
+  here('extracted and binned')
 
-# now compute histograms for words and for urls
-with open('words.txt', 'w') as f:
-  compute_histogram(WORD_REGEX, normalize_all_words, f)
-here('words.txt')
-with open('urls.txt', 'w') as f:
-  compute_histogram(URL_REGEX, normalize_all_urls, f)
-here('urls.txt')
+  # compute histograms for words and for urls
+  users, forms = match_and_bin(WORD_REGEX, normalize_all_words)
+  dump_histogram(users, forms, 'words.txt')
+  here('words.txt')
+  compute_talkgraph(users)
+  here('talkgraph.txt')
+  compute_histogram(URL_REGEX, normalize_all_urls, 'urls.txt')
+  here('urls.txt')
+
+if __name__ == '__main__':
+  main()

@@ -238,7 +238,6 @@ def extract_and_bin():
   with closing(shelve.open('statuses/data', 'c')) as db:
     with closing(shelve.open('statuses/index', 'c')) as idx:
       low, high = -1, size
-      print start_time, stop_time
       while low + 1 < high:
         binstep += 1
         middle = (low + high) / 2
@@ -247,7 +246,7 @@ def extract_and_bin():
           low = middle
         else:
           high = middle
-      print 'binstep',binstep
+      print '  binstep',binstep
       low += 1
       here('binsearch')
       with open('transcript.txt', 'w') as transcript:
@@ -271,9 +270,10 @@ def compute_talkgraph(users):
     if w.startswith('@'):
       _, wn = normalize_word(w[1:])
       for u in us:
-        if u not in mentions:
-          mentions[u] = set()
-        mentions[u].add(wn)
+        _, un = normalize_word(u)
+        if un not in mentions:
+          mentions[un] = set()
+        mentions[un].add(wn)
   with open('talkgraph.txt', 'w') as file:
     for x, ys in mentions.iteritems():
       file.write(x)

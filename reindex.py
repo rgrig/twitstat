@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 # Creates the statuses/index file. It maps 0, 1, 2, ... to
 # increasing status ids, which are keys in statuses/data.
 

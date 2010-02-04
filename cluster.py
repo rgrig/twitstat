@@ -62,12 +62,17 @@ def union(boss, x, y):
     x, y = y, x
   boss[find(boss, x)] = find(boss, y)
 
-def max_cut_clustering(g):
+def min_cut_clustering(g):
   stderr.write('processing {0} users\n'.format(len(g)))
   t1 = time()
   boss = range(len(g))
   nodes = range(1, len(g))
-  nodes.sort(lambda x, y: cmp(len(g[y]), len(g[x])))
+  def weight_sum(d):
+    r = 0
+    for w in d.itervalues():
+      r += w
+    return r
+  nodes.sort(lambda x, y: cmp(weight_sum(g[y]), weight_sum(g[x])))
   touched = set()
   for x in nodes:
     if x in touched:
@@ -118,7 +123,7 @@ def order_cluster(g, cluster):
   dist_sum = dict()
   for x in cluster:
     dist = dict()
-    q = [(x, 0)]
+    q = [(0, x)]
     while len(q) > 0:
       d, y = heappop(q)
       if y in dist:
@@ -126,7 +131,7 @@ def order_cluster(g, cluster):
       dist[y] = d
       for z, w in g[y].iteritems():
         if z not in dist and z in cluster:
-          heappush(q, (w + d, z))
+          heappush(q, (1.0/(w+1) + d, z))
     sum = 0
     for y in dist.itervalues():
       sum += y
@@ -139,7 +144,7 @@ def main():
   alpha = parse_command()
   name_of_index, orig_graph = parse_graph()
   graph = make_undirected(orig_graph, alpha)
-  clusters = max_cut_clustering(graph)
+  clusters = min_cut_clustering(graph)
   clusters.sort(lambda x, y: cmp(len(y), len(x)))
   with open('groups.txt', 'w') as file:
     for us in clusters:

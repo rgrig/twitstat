@@ -131,7 +131,9 @@ def order_cluster(g, cluster):
       dist[y] = d
       for z, w in g[y].iteritems():
         if z not in dist and z in cluster:
-          heappush(q, (1.0/(w+1) + d, z))
+          if w == 0:
+            print y, z
+          heappush(q, (1.0/w + d, z))
     sum = 0
     for y in dist.itervalues():
       sum += y

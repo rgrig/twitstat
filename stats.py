@@ -135,7 +135,7 @@ def normalize_all_urls(l):
       except KeyError:
         unknown_urls.append(u)
     print '  ', len(unknown_urls), 'urls to normalize online'
-    processes = Pool(100)
+    processes = Pool(25)
     for u, un in processes.imap_unordered(normalize_url, unknown_urls, 10):
       r[u] = un
       cache[u.encode('utf-8')] = un

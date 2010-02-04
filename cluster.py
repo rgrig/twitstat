@@ -52,10 +52,12 @@ def make_undirected(dg, alpha):
   return g
 
 def find(boss, x):
-  if boss[x] == x:
-    return x
-  boss[x] = find(boss, boss[x])
-  return boss[x]
+  y = x
+  while y != boss[y]:
+    y = boss[y]
+  while x != y:
+    boss[x], x = y, boss[x]
+  return y
 
 def union(boss, x, y):
   if randint(0, 1) == 1:
@@ -63,7 +65,7 @@ def union(boss, x, y):
   boss[find(boss, x)] = find(boss, y)
 
 def min_cut_clustering(g):
-  stderr.write('processing {0} users\n'.format(len(g)))
+  stderr.write('clustering {0} users\n'.format(len(g)))
   t1 = time()
   boss = range(len(g))
   nodes = range(1, len(g))
@@ -110,7 +112,7 @@ def min_cut_clustering(g):
     t2 = time()
     if t2 - t1 > 10:
       t1 = t2
-      stderr.write('{0: >4.0%} done\n'.format(float(len(touched))/len(g)))
+      stderr.write('  {0: >4.0%} clustered\n'.format(float(len(touched))/len(g)))
   clusters = dict()
   for i in xrange(1, len(g)):
     rep = find(boss, i)
@@ -120,6 +122,10 @@ def min_cut_clustering(g):
   return clusters.values()
 
 def order_cluster(g, cluster):
+  if len(cluster) > 99:
+    cnt = 0
+    t1 = time()
+    stderr.write('ordering cluster of {0} users\n'.format(len(cluster)))
   dist_sum = dict()
   for x in cluster:
     dist = dict()
@@ -131,13 +137,17 @@ def order_cluster(g, cluster):
       dist[y] = d
       for z, w in g[y].iteritems():
         if z not in dist and z in cluster:
-          if w == 0:
-            print y, z
           heappush(q, (1.0/w + d, z))
     sum = 0
     for y in dist.itervalues():
       sum += y
     dist_sum[x] = sum
+    if len(cluster) > 99:
+      cnt += 1
+      t2 = time()
+      if t2 - t1 > 10:
+        t1 = t2
+        stderr.write('  {0: >4.0%} ordered\n'.format(1.0 * cnt / len(cluster)))
   result = list(cluster)
   result.sort(lambda x, y: cmp(dist_sum[x], dist_sum[y]))
   return result

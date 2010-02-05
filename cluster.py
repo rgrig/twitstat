@@ -1,8 +1,10 @@
 #!/usr/bin/env python2
 # vim: set fileencoding=utf-8 :
 
+from contextlib import closing
 from heapq import heappop, heappush
 from random import randint
+import shelve
 from sys import argv, exit, stderr, stdin
 from time import time
 
@@ -17,36 +19,44 @@ def parse_command():
     exit(2)
 
 def parse_graph():
-  graph = dict()
-  names_count = 0
+  # Give numbers to names (to speed up the graph algos).
+  all_names = set()
+  with closing(shelve.open('clustering.shelf')) as f:
+    for src in f.keys():
+      all_names.add(src)
+      for tgt in f[src][1]:
+        all_names.add(tgt)
   index_of_name = dict()
-  with open('talkgraph.txt', 'r') as file:
-    for line in file:
-      xs = line.split()
-      for x in [xs[0]] + xs[2:]:
-        if x not in index_of_name:
-          names_count += 1
-          index_of_name[x] = names_count
-          graph[names_count] = set()
-      graph[index_of_name[xs[0]]].update([index_of_name[n] for n in xs[2:]])
+  name_of_index = ['*ARTIFICIAL*']
+  names_count = 0
+  for n in all_names:
+    if n not in index_of_name:
+      names_count += 1
+      index_of_name[n] = names_count
+      name_of_index.append(n)
   names_count += 1
-  name_of_index = names_count * ['']
-  name_of_index[0] = '*ARTIFICIAL*'
-  for n, i in index_of_name.iteritems():
-    name_of_index[i] = n
-  for src, tgts in graph.iteritems():
-    tgts.discard(src)
+
+  # Get the graph, and use numbers to represent it.
+  graph = [[]] * names_count
+  with closing(shelve.open('clustering.shelf')) as f:
+    for src in f.keys():
+      src_idx = index_of_name[src]
+      tgts = set([index_of_name[n] for n in f[src][1]])
+      tgts.discard(src_idx)
+      graph[src_idx] = list(tgts)
   return (name_of_index, graph)
 
 def make_undirected(dg, alpha):
-  g = dict([(i, dict())for i in xrange(len(dg)+1)])
-  for src, tgts in dg.iteritems():
+  g = dict()
+  for i in xrange(len(dg)):
+    g[i] = dict()
+  for src in xrange(len(dg)):
+    tgts = dg[src]
     for tgt in tgts:
       if tgt not in g[src]:
-        g[src][tgt] = 1.0 / len(tgts)
-        if src in dg[tgt]:
-          g[src][tgt] += 1.0 / len(dg[tgt])
-        g[tgt][src] = g[src][tgt]
+        g[src][tgt] = g[tgt][src] = 0
+      g[src][tgt] += 1.0 / len(tgts)
+      g[tgt][src] += 1.0 / len(tgts)
   for i in xrange(1, len(g)):
     g[0][i] = g[i][0] = alpha
   return g

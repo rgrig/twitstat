@@ -127,7 +127,7 @@ def normalize_all_words(l):
 
 def normalize_all_urls(l):
   r = dict()
-  with closing(shelve.open('statuses/urls', 'c')) as cache:
+  with closing(shelve.open('statuses/urls')) as cache:
     all_urls = set()
     for s in l.itervalues():
       for u in s:
@@ -226,24 +226,15 @@ def dump_histogram(histo, forms, filename):
 #}}}
 
 #{{{ graph related operations
-def compute_talkgraph(users):
-  mentions = dict()
-  for w, us in users.iteritems():
-    if w.startswith('@'):
-      _, wn = normalize_word(w[1:])
-      for u in us:
-        _, un = normalize_word(u)
-        if un not in mentions:
-          mentions[un] = set()
-        mentions[un].add(wn)
-  with open('talkgraph.txt', 'w') as file:
-    for x, ys in mentions.iteritems():
-      file.write(x)
-      file.write(' ->')
-      for y in ys:
-        file.write(' ')
-        file.write(y)
-      file.write('\n')
+def save_clustering_info(words_of_user):
+  with closing(shelve.open('clustering.shelf', 'n')) as f:
+    for user, words in words_of_user.iteritems():
+      mentions = set()
+      for w in words:
+        if w.startswith('@'):
+          mentions.add(w[1:])
+      _, user = normalize_word(user)
+      f[user] = (words, mentions)
 #}}}
 
 #{{{ cmd line parsing
@@ -275,8 +266,8 @@ def extract_and_bin():
   binstep = 0
   with open('statuses/indexsize', 'r') as f:
     size = int(f.readline())
-  with closing(shelve.open('statuses/data', 'c')) as db:
-    with closing(shelve.open('statuses/index', 'c')) as idx:
+  with closing(shelve.open('statuses/data')) as db:
+    with closing(shelve.open('statuses/index')) as idx:
       low, high = -1, size
       while low + 1 < high:
         binstep += 1
@@ -315,8 +306,8 @@ def main():
   words = aggregate_histograms(words_of_user, lambda x: x)
   dump_histogram(words, word_forms, 'words.txt')
   here('words.txt')
-  #compute_talkgraph(words)
-  here('talkgraph.txt')
+  save_clustering_info(words_of_user)
+  here('clustering.shelf')
   urls_of_user, url_forms = match_and_bin(URL_REGEX, normalize_all_urls)
   urls = aggregate_histograms(urls_of_user, lambda _: 1)
   dump_histogram(urls, url_forms, 'urls.txt')

@@ -120,7 +120,7 @@ def normalize_url(u):
 def normalize_all_words(l):
   r = dict()
   processes = Pool(max(1, cpu_count()-1))
-  for _, s in l:
+  for s in l.itervalues():
     for w, wn in processes.imap_unordered(normalize_word, s):
       r[w] = wn
   return r
@@ -129,7 +129,7 @@ def normalize_all_urls(l):
   r = dict()
   with closing(shelve.open('statuses/urls', 'c')) as cache:
     all_urls = set()
-    for _, s in l:
+    for s in l.itervalues():
       for u in s:
         all_urls.add(u)
     print '  ', len(all_urls), 'urls to normalize'
@@ -147,8 +147,9 @@ def normalize_all_urls(l):
   return r
 
 def dummy_normalize(l):
+  '''For testing.'''
   r = dict()
-  for _, s in l:
+  for s in l.itervalues():
     for m in s:
       r[m] = m
   return r
@@ -158,61 +159,70 @@ statuses_of_user = dict()
 
 #{{{ extraction of features from statuses
 def match_and_bin(regex, normalize):
-  '''Find all the matches for regex. For each normalized match it
-  computes who said it. For each normalized match it remembers all
-  the non-normalized forms.'''
+  '''Computes a histogram of normalized matches per user.
 
-  # construct a list of sets of matches
+  A 'match' is a substring in the language of regex. Two
+  matches that normalize to the same thing are considered to be
+  equivalent: They are different 'forms' of the same normalized
+  match.
+
+  This returns a dictionary that gives, for each user, a
+  histogram of normalized matches. It also returns a dictionary
+  that gives, for each normalized match, its forms.'''
+
+  # for each user, list the matches, then normalize
   pattern = re.compile(regex)
-  matches = []
+  matches = dict()
   for user, statuses in statuses_of_user.iteritems():
-    user_matches = set()
+    user_matches = []
     for s in statuses:
       for m in re.finditer(pattern, s):
-        user_matches.add(m.group())
-    matches.append((user, user_matches))
+        user_matches.append(m.group())
+    matches[user] = user_matches
   normalized = normalize(matches)
 
-  # for each normalized match keep the set of users
-  # also, compute forms, the inverse of normalized
-  users = dict()
+  # for each user, compute the histogram of normalized matches
+  # also, for each normalized match, compute the set of forms
+  histo_of_user = dict()
   forms = dict()
-  for user, user_matches in matches:
+  for user, user_matches in matches.iteritems():
+    histo = dict()
     for m in user_matches:
       mn = normalized[m]
       if mn in STOPWORDS:
         continue
       if mn not in forms:
         forms[mn] = set()
-        users[mn] = set()
       forms[mn].add(m)
-      users[mn].add(user)
-  return (users, forms)
+      if mn not in histo:
+        histo[mn] = 0
+      histo[mn] += 1
+    histo_of_user[user] = histo
+  return (histo_of_user, forms)
 
-def dump_histogram(users, forms, filename):
-  '''sort by the number of users mentioning each match
-  and report to file'''
+def aggregate_histograms(histo_of_user, filter):
+  histo = dict()
+  for counts in histo_of_user.itervalues():
+    for match, count in counts.iteritems():
+      if match not in histo:
+        histo[match] = 0
+      histo[match] += filter(count)
+  return histo
+
+def dump_histogram(histo, forms, filename):
+  '''print in decreasing order of frequency'''
+  list = [(cnt, m) for m, cnt in histo.iteritems()]
+  list.sort(lambda x, y: cmp(y, x))
   with open(filename, 'w') as file:
-    list = [(len(us), m) for m, us in users.iteritems()]
-    list.sort()
-    list.reverse()
     for n, m in list:
       file.write(str(n))
       file.write(' ')
       file.write(m)
       file.write(' (')
-      for author in users[m]:
-        file.write(' ')
-        file.write(author.encode('utf-8'))
-      file.write(' ) (')
       for form in forms[m]:
         file.write(' ')
         file.write(form.encode('utf-8'))
       file.write(' )\n')
-
-def compute_histogram(regex, normalize, filename):
-  users, forms = match_and_bin(regex, normalize)
-  dump_histogram(users, forms, filename)
 #}}}
 
 #{{{ graph related operations
@@ -301,12 +311,15 @@ def main():
   here('extracted and binned')
 
   # compute histograms for words and for urls
-  users, forms = match_and_bin(WORD_REGEX, normalize_all_words)
-  dump_histogram(users, forms, 'words.txt')
+  words_of_user, word_forms = match_and_bin(WORD_REGEX, normalize_all_words)
+  words = aggregate_histograms(words_of_user, lambda x: x)
+  dump_histogram(words, word_forms, 'words.txt')
   here('words.txt')
-  compute_talkgraph(users)
+  #compute_talkgraph(words)
   here('talkgraph.txt')
-  compute_histogram(URL_REGEX, normalize_all_urls, 'urls.txt')
+  urls_of_user, url_forms = match_and_bin(URL_REGEX, normalize_all_urls)
+  urls = aggregate_histograms(urls_of_user, lambda _: 1)
+  dump_histogram(urls, url_forms, 'urls.txt')
   here('urls.txt')
 
 if __name__ == '__main__':

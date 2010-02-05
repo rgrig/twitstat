@@ -3,6 +3,7 @@
 
 from contextlib import closing
 from heapq import heappop, heappush
+from numpy import zeros, ones, matrix
 from random import randint
 import shelve
 from sys import argv, exit, stderr, stdin
@@ -74,6 +75,7 @@ def union(boss, x, y):
     x, y = y, x
   boss[find(boss, x)] = find(boss, y)
 
+# See Flake et al. 2004.
 def min_cut_clustering(g):
   stderr.write('clustering {0} users\n'.format(len(g)))
   t1 = time()
@@ -131,35 +133,49 @@ def min_cut_clustering(g):
     clusters[rep].add(i)
   return clusters.values()
 
-def order_cluster(g, cluster):
+# PageRank.
+def order_cluster(dg, cluster):
   if len(cluster) > 99:
     cnt = 0
     t1 = time()
-    stderr.write('ordering cluster of {0} users\n'.format(len(cluster)))
-  dist_sum = dict()
+    stderr.write('ordering cluster of {0} users'.format(len(cluster)))
+  # map cluster elements to 1..n
+  n = 0
+  compressed = dict()
+  compressed[0] = 0
   for x in cluster:
-    dist = dict()
-    q = [(0, x)]
-    while len(q) > 0:
-      d, y = heappop(q)
-      if y in dist:
-        continue
-      dist[y] = d
-      for z, w in g[y].iteritems():
-        if z not in dist and z in cluster:
-          heappush(q, (1.0/w + d, z))
-    sum = 0
-    for y in dist.itervalues():
-      sum += y
-    dist_sum[x] = sum
-    if len(cluster) > 99:
-      cnt += 1
-      t2 = time()
-      if t2 - t1 > 10:
-        t1 = t2
-        stderr.write('  {0: >4.0%} ordered\n'.format(1.0 * cnt / len(cluster)))
+    n += 1
+    compressed[x] = n
+  n += 1
+  
+  # create the adjacency matrix
+  G = matrix(zeros((n,n)))
+  for x in cluster:
+    ys = [0]
+    for y in dg[x]:
+      if y in cluster:
+        ys.append(y)
+    for y in ys:
+      G[compressed[y], compressed[x]] = 1.0 / len(ys)
+    G[compressed[x], 0] = 1.0 / len(cluster)
+
+  # iterate
+  t0 = time()
+  c = ones(n)
+  for i in xrange(10):
+    if time() - t0 > 3:
+      if i > 3:
+        break
+      if len(cluster) > 99:
+        stderr.write('.')
+    G = G * G
+    G = G / (c * G)
+  score = G * ones((n,1))
+
   result = list(cluster)
-  result.sort(lambda x, y: cmp(dist_sum[x], dist_sum[y]))
+  result.sort(lambda x, y: cmp(score[compressed[y]], score[compressed[x]]))
+  if len(cluster) > 99:
+    stderr.write('\n')
   return result
 
 def main():
@@ -170,7 +186,7 @@ def main():
   clusters.sort(lambda x, y: cmp(len(y), len(x)))
   with open('groups.txt', 'w') as file:
     for us in clusters:
-      ous = order_cluster(graph, us)
+      ous = order_cluster(orig_graph, us)
       file.write(str(len(ous)))
       for u in ous:
         file.write(' ')

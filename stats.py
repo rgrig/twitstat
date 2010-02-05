@@ -10,6 +10,7 @@ from sys import argv, exit, stderr, stdout
 from time import localtime, mktime, strftime, struct_time, time
 from urllib2 import urlopen
 
+#{{{ usage
 USAGE = """usage: ./stats.py [start_time [stop_time]]
 
 The  default  start_time  is  the start  of  today;  the  default
@@ -35,7 +36,9 @@ The program creates three files.
 
 The program expects a database of Twitter statuses in ./statuses.
 """
+#}}}
 
+#{{{ small utils
 proftime = time()
 def here(s):
   global proftime
@@ -91,7 +94,9 @@ def parse_time(s):
     stderr.write(USAGE)
     stderr.write('I cannot parse the time {0}: {1}\n'.format(s, str(e)))
     exit(3)
+#}}}
 
+#{{{ normalize functions
 def normalize_word(w):
   def romsimpl(c):
     if c not in ROMSIMPL:
@@ -147,9 +152,11 @@ def dummy_normalize(l):
     for m in s:
       r[m] = m
   return r
+#}}}
 
 statuses_of_user = dict()
 
+#{{{ extraction of features from statuses
 def match_and_bin(regex, normalize):
   '''Find all the matches for regex. For each normalized match it
   computes who said it. For each normalized match it remembers all
@@ -206,8 +213,30 @@ def dump_histogram(users, forms, filename):
 def compute_histogram(regex, normalize, filename):
   users, forms = match_and_bin(regex, normalize)
   dump_histogram(users, forms, filename)
+#}}}
 
-### The main parts of the program.
+#{{{ graph related operations
+def compute_talkgraph(users):
+  mentions = dict()
+  for w, us in users.iteritems():
+    if w.startswith('@'):
+      _, wn = normalize_word(w[1:])
+      for u in us:
+        _, un = normalize_word(u)
+        if un not in mentions:
+          mentions[un] = set()
+        mentions[un].add(wn)
+  with open('talkgraph.txt', 'w') as file:
+    for x, ys in mentions.iteritems():
+      file.write(x)
+      file.write(' ->')
+      for y in ys:
+        file.write(' ')
+        file.write(y)
+      file.write('\n')
+#}}}
+
+#{{{ cmd line parsing
 def parse_command_line():
   global start_time
   global stop_time
@@ -226,6 +255,7 @@ def parse_command_line():
   if start_time >= stop_time:
     stderr.write('Void time interval.\n')
     exit(2)
+#}}}
 
 def extract_and_bin():
   '''Go through the database and generate the file transcript.txt.
@@ -263,25 +293,6 @@ def extract_and_bin():
           transcript.write(status['text'].encode('utf-8').replace('\n', '  '))
           transcript.write('\n')
           low += 1
-
-def compute_talkgraph(users):
-  mentions = dict()
-  for w, us in users.iteritems():
-    if w.startswith('@'):
-      _, wn = normalize_word(w[1:])
-      for u in us:
-        _, un = normalize_word(u)
-        if un not in mentions:
-          mentions[un] = set()
-        mentions[un].add(wn)
-  with open('talkgraph.txt', 'w') as file:
-    for x, ys in mentions.iteritems():
-      file.write(x)
-      file.write(' ->')
-      for y in ys:
-        file.write(' ')
-        file.write(y)
-      file.write('\n')
 
 def main():
   parse_command_line()

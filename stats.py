@@ -3,7 +3,7 @@
 
 from calendar import timegm
 from contextlib import closing
-from multiprocessing import Pool
+from multiprocessing import cpu_count, Pool
 import re
 import shelve
 from sys import argv, exit, stderr, stdout
@@ -119,7 +119,7 @@ def normalize_url(u):
 
 def normalize_all_words(l):
   r = dict()
-  processes = Pool()
+  processes = Pool(max(1, cpu_count()-1))
   for _, s in l:
     for w, wn in processes.imap_unordered(normalize_word, s):
       r[w] = wn

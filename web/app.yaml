@@ -1,0 +1,15 @@
+application: old-news
+version: public
+runtime: python
+api_version: 1
+
+default_expiration: "6h"
+ 
+handlers:
+- url: /
+  static_files: static/index.html
+  upload: static/index.html
+
+- url: /(.*)
+  static_files: static/\1
+  upload: static/(.*)

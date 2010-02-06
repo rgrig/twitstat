@@ -133,7 +133,6 @@ def min_cut_clustering(g):
     clusters[rep].add(i)
   return clusters.values()
 
-# PageRank.
 def pagerank(dg, cluster):
   if len(cluster) > 99:
     cnt = 0
@@ -151,17 +150,15 @@ def pagerank(dg, cluster):
   # create the adjacency matrix
   G = matrix(zeros((n,n)))
   for x in cluster:
-    ys = [0]
     for y in dg[x]:
       if y in cluster:
-        ys.append(y)
-    for y in ys:
-      G[compressed[y], compressed[x]] = 1.0 / len(ys)
-    G[compressed[x], 0] = 1.0 / len(cluster)
+        G[compressed[y], compressed[x]] = 1.0
+    G[compressed[x], 0] = G[0, compressed[x]] = 1.0
 
   # iterate
   t0 = time()
   c = ones(n)
+  G = G / (c * G)
   for i in xrange(10):
     if time() - t0 > 3:
       if i > 3:

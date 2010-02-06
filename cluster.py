@@ -6,8 +6,27 @@ from heapq import heappop, heappush
 from numpy import zeros, ones, matrix
 from random import randint
 import shelve
-from sys import argv, exit, stderr, stdin
+from sys import argv, exit, stderr, stdin, stdout
 from time import time
+
+# Reading guide:
+#   g   is a graph
+#   dg  is a digraph
+
+#{{{ union-find (randomized and with path compression)
+def find(boss, x):
+  y = x
+  while y != boss[y]:
+    y = boss[y]
+  while x != y:
+    boss[x], x = y, boss[x]
+  return y
+
+def union(boss, x, y):
+  if randint(0, 1) == 1:
+    x, y = y, x
+  boss[find(boss, x)] = find(boss, y)
+#}}}
 
 def parse_command():
   if len(argv) != 2:
@@ -47,50 +66,46 @@ def parse_graph():
       graph[src_idx] = list(tgts)
   return (name_of_index, graph)
 
-def make_undirected(dg, alpha):
+def make_undirected(dg, boss, alpha):
   g = dict()
-  for i in xrange(len(dg)):
-    g[i] = dict()
-  for src in xrange(len(dg)):
-    tgts = dg[src]
-    for tgt in tgts:
+  g[0] = dict()
+  for x in xrange(1, len(dg)):
+    y = find(boss, x)
+    if y not in g:
+      g[y] = dict([(0,0)])
+      g[0][y] = 0
+    g[y][0] += alpha
+    g[0][y] += alpha
+  for x in xrange(len(dg)):
+    src = find(boss, x)
+    ys = dg[x]
+    for y in ys:
+      tgt = find(boss, y)
+      if src == tgt:
+        continue
       if tgt not in g[src]:
-        g[src][tgt] = g[tgt][src] = 0
-      g[src][tgt] += 1.0 / len(tgts)
-      g[tgt][src] += 1.0 / len(tgts)
-  for i in xrange(1, len(g)):
-    g[0][i] = g[i][0] = alpha
+        g[src][tgt] = g[tgt][src] = 0.0
+      g[src][tgt] += 1.0 / len(ys)
+      g[tgt][src] += 1.0 / len(ys)
   return g
 
-def find(boss, x):
-  y = x
-  while y != boss[y]:
-    y = boss[y]
-  while x != y:
-    boss[x], x = y, boss[x]
-  return y
-
-def union(boss, x, y):
-  if randint(0, 1) == 1:
-    x, y = y, x
-  boss[find(boss, x)] = find(boss, y)
-
 # See Flake et al. 2004.
-def min_cut_clustering(g):
+def cut_clustering(g, boss):
   stderr.write('clustering {0} users\n'.format(len(g)))
   t1 = time()
-  boss = range(len(g))
-  nodes = range(1, len(g))
-  def weight_sum(d):
-    r = 0
-    for w in d.itervalues():
-      r += w
-    return r
-  nodes.sort(lambda x, y: cmp(weight_sum(g[y]), weight_sum(g[x])))
+  total_weight = dict()
+  for x, ys in g.iteritems():
+    if x != 0:
+      total_weight[x] = 0
+      for w in ys.itervalues():
+        total_weight[x] -= w
+  nodes = [(w, x) for (x, w) in total_weight.iteritems()]
+  nodes.sort()
   touched = set()
-  for x in nodes:
+  for _, x in nodes:
     if x in touched:
       continue
+    # max flow / min cut
     rn = dict([(src, dict(tgts)) for (src, tgts) in g.iteritems()])
     while True:
       pred = dict()
@@ -125,13 +140,6 @@ def min_cut_clustering(g):
     if t2 - t1 > 10:
       t1 = t2
       stderr.write('  {0: >4.0%} clustered\n'.format(float(len(touched))/len(g)))
-  clusters = dict()
-  for i in xrange(1, len(g)):
-    rep = find(boss, i)
-    if rep not in clusters:
-      clusters[rep] = set()
-    clusters[rep].add(i)
-  return clusters.values()
 
 def pagerank(dg, cluster):
   if len(cluster) > 99:
@@ -194,20 +202,59 @@ def order_cluster(dg, cluster):
   else:
     return pagerank(dg, cluster)
 
+def compute_children(old_boss, new_boss):
+  assert len(old_boss) == len(new_boss)
+  c = dict()
+  for x in xrange(1, len(new_boss)):
+    ob = find(old_boss, x)
+    nb = find(new_boss, x)
+    if nb not in c:
+      c[nb] = set()
+    c[nb].add(ob)
+  return c
+
+def get_cluster(children, level, x):
+  if level >= len(children):
+    return set([x])
+  r = set()
+  for y in children[level][x]:
+    r |= get_cluster(children, level + 1, y)
+  return r
+
+def print_clusters(name_of_index, orig_graph, children, level, root):
+  if level >= len(children):
+    return
+  clusters = []
+  for x in children[level][root]:
+    one_cluster = get_cluster(children, level + 1, x)
+    if len(one_cluster) >= 5:
+      clusters.append((x, one_cluster))
+#  if len(clusters) <= 1:
+#    return
+  clusters.sort(lambda x, y: cmp(len(y[1]), len(x[1])))
+  for x, c in clusters:
+    oc = order_cluster(orig_graph, c)
+    stdout.write('  ' * level)
+    stdout.write(str(len(oc)))
+    stdout.write(', in frunte cu')
+    for y in oc[:5]:
+      stdout.write(' ')
+      stdout.write(name_of_index[y])
+    stdout.write('\n')
+    print_clusters(name_of_index, orig_graph, children, level + 1, x)
+
 def main():
-  alpha = parse_command()
   name_of_index, orig_graph = parse_graph()
-  graph = make_undirected(orig_graph, alpha)
-  clusters = min_cut_clustering(graph)
-  clusters.sort(lambda x, y: cmp(len(y), len(x)))
-  with open('groups.txt', 'w') as file:
-    for us in clusters:
-      ous = order_cluster(orig_graph, us)
-      file.write(str(len(ous)))
-      for u in ous:
-        file.write(' ')
-        file.write(name_of_index[u])
-      file.write('\n')
+  boss = range(len(orig_graph))
+  children = []
+  for alpha in [1, 0.1, 0.01, 0]:
+    graph = make_undirected(orig_graph, boss, alpha)
+    old_boss = [x for x in boss]
+    cut_clustering(graph, boss)
+    children.append(compute_children(old_boss, boss))
+  children.append(compute_children(boss, [0 for _ in boss]))
+  children.reverse()
+  print_clusters(name_of_index, orig_graph, children, 0, 0)
 
 if __name__ == '__main__':
   main()

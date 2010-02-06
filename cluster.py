@@ -134,7 +134,7 @@ def min_cut_clustering(g):
   return clusters.values()
 
 # PageRank.
-def order_cluster(dg, cluster):
+def pagerank(dg, cluster):
   if len(cluster) > 99:
     cnt = 0
     t1 = time()
@@ -177,6 +177,25 @@ def order_cluster(dg, cluster):
   if len(cluster) > 99:
     stderr.write('\n')
   return result
+
+def simple_cluster_ordering(dg, cluster):
+  weight = dict()
+  for x in cluster:
+    weight[x] = 1
+  for tgts in dg:
+    for y in tgts:
+      if y in cluster:
+        weight[y] += 1.0 / len(tgts)
+  result = list(cluster)
+  result.sort(lambda x, y: cmp(weight[y], weight[x]))
+  return result
+
+def order_cluster(dg, cluster):
+  if len(cluster) > 3000:
+    stderr.write('quickly ordering cluster of {0}\n'.format(len(cluster)))
+    return simple_cluster_ordering(dg, cluster)
+  else:
+    return pagerank(dg, cluster)
 
 def main():
   alpha = parse_command()

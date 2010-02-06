@@ -55,6 +55,13 @@ def parse_graph():
       index_of_name[n] = names_count
       name_of_index.append(n)
   names_count += 1
+  words_of_user = [dict()]
+  with closing(shelve.open('clustering.shelf')) as f:
+    for n in name_of_index[1:]:
+      if n in f:
+        words_of_user.append(f[n][0])
+      else:
+        words_of_user.append(dict())
 
   # Get the graph, and use numbers to represent it.
   graph = [[]] * names_count
@@ -64,7 +71,7 @@ def parse_graph():
       tgts = set([index_of_name[n] for n in f[src][1]])
       tgts.discard(src_idx)
       graph[src_idx] = list(tgts)
-  return (name_of_index, graph)
+  return (words_of_user, name_of_index, graph)
 
 def make_undirected(dg, boss, alpha):
   g = dict()
@@ -91,7 +98,7 @@ def make_undirected(dg, boss, alpha):
 
 # See Flake et al. 2004.
 def cut_clustering(g, boss):
-  stderr.write('clustering {0} users\n'.format(len(g)))
+  stderr.write('clustering {0} nodes\n'.format(len(g)))
   t1 = time()
   total_weight = dict()
   for x, ys in g.iteritems():
@@ -221,40 +228,79 @@ def get_cluster(children, level, x):
     r |= get_cluster(children, level + 1, y)
   return r
 
-def print_clusters(name_of_index, orig_graph, children, level, root):
+def describe_cluster(words_of_user, cluster):
+  bad = set('@1234567890')
+  interesting_words = set()
+  for u in cluster:
+    for w in words_of_user[u].iterkeys():
+      if bad.isdisjoint(set(w)):
+        interesting_words.add(w)
+  inside = dict([(w,0) for w in interesting_words])
+  outside = dict([(w,0) for w in interesting_words])
+  for u in xrange(1, len(words_of_user)):
+    if u in cluster:
+      d = inside
+    else:
+      d = outside
+    for w in interesting_words:
+      if w in words_of_user[u]:
+        d[w] += words_of_user[u][w]
+  h1 = []
+  h2 = []
+  for w in interesting_words:
+    if outside[w] == 0:
+      heappush(h1, (-inside[w], w))
+    else:
+      heappush(h2, (-1.0*inside[w]/outside[w], w))
+  result = []
+  while len(h1) > 0 and len(result) < 5:
+    _, w = heappop(h1)
+    result.append(w)
+  while len(h2) > 0 and len(result) < 5:
+    _, w = heappop(h2)
+    result.append(w)
+  return result
+
+def print_clusters(words_of_user, name_of_index, orig_graph, children, pl, level, root):
   if level >= len(children):
     return
   clusters = []
   for x in children[level][root]:
     one_cluster = get_cluster(children, level + 1, x)
-    if len(one_cluster) >= 5:
+    if len(one_cluster) >= 20:
       clusters.append((x, one_cluster))
-#  if len(clusters) <= 1:
-#    return
+  if len(clusters) == 1:
+    print_clusters(words_of_user, name_of_index, orig_graph, children, pl, level + 1, clusters[0][0])
+    return
   clusters.sort(lambda x, y: cmp(len(y[1]), len(x[1])))
   for x, c in clusters:
     oc = order_cluster(orig_graph, c)
-    stdout.write('  ' * level)
+    ws = describe_cluster(words_of_user, c)
+    stdout.write('  ' * pl)
     stdout.write(str(len(oc)))
     stdout.write(', in frunte cu')
     for y in oc[:5]:
       stdout.write(' ')
       stdout.write(name_of_index[y])
+    stdout.write(', au vorbit despre')
+    for w in ws:
+      stdout.write(' ')
+      stdout.write(w)
     stdout.write('\n')
-    print_clusters(name_of_index, orig_graph, children, level + 1, x)
+    print_clusters(words_of_user, name_of_index, orig_graph, children, pl + 1, level + 1, x)
 
 def main():
-  name_of_index, orig_graph = parse_graph()
+  words_of_user, name_of_index, orig_graph = parse_graph()
   boss = range(len(orig_graph))
   children = []
-  for alpha in [1, 0.1, 0.01, 0]:
+  for alpha in [0.1, 0.01, 0.005, 0]:
     graph = make_undirected(orig_graph, boss, alpha)
     old_boss = [x for x in boss]
     cut_clustering(graph, boss)
     children.append(compute_children(old_boss, boss))
   children.append(compute_children(boss, [0 for _ in boss]))
   children.reverse()
-  print_clusters(name_of_index, orig_graph, children, 0, 0)
+  print_clusters(words_of_user, name_of_index, orig_graph, children, 0, 0, 0)
 
 if __name__ == '__main__':
   main()

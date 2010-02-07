@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 # vim: set fileencoding=utf-8 :
 
+from collections import deque
 from contextlib import closing
 from heapq import heappop, heappush
 from numpy import zeros, ones, matrix
@@ -41,10 +42,10 @@ def parse_command():
 def parse_graph():
   # Give numbers to names (to speed up the graph algos).
   all_names = set()
-  with closing(shelve.open('clustering.shelf')) as f:
+  with closing(shelve.open('histograms', 'r')) as f:
     for src in f.keys():
       all_names.add(src)
-      for tgt in f[src][1]:
+      for tgt in f[src]['mentions'].iterkeys():
         all_names.add(tgt)
   index_of_name = dict()
   name_of_index = ['*ARTIFICIAL*']
@@ -56,21 +57,21 @@ def parse_graph():
       name_of_index.append(n)
   names_count += 1
   words_of_user = [dict()]
-  with closing(shelve.open('clustering.shelf')) as f:
+  with closing(shelve.open('histograms', 'r')) as f:
     for n in name_of_index[1:]:
       if n in f:
-        words_of_user.append(f[n][0])
+        words_of_user.append(f[n]['words'])
       else:
         words_of_user.append(dict())
 
   # Get the graph, and use numbers to represent it.
-  graph = [[]] * names_count
-  with closing(shelve.open('clustering.shelf')) as f:
+  graph = [dict() for _ in xrange(names_count)]
+  with closing(shelve.open('histograms', 'r')) as f:
     for src in f.keys():
-      src_idx = index_of_name[src]
-      tgts = set([index_of_name[n] for n in f[src][1]])
-      tgts.discard(src_idx)
-      graph[src_idx] = list(tgts)
+      src_dict = graph[index_of_name[src]]
+      for tgt, w in f[src]['mentions'].iteritems():
+        if tgt != src:
+          src_dict[index_of_name[tgt]] = w
   return (words_of_user, name_of_index, graph)
 
 def make_undirected(dg, boss, alpha):
@@ -83,21 +84,23 @@ def make_undirected(dg, boss, alpha):
       g[0][y] = 0
     g[y][0] += alpha
     g[0][y] += alpha
-  for x in xrange(len(dg)):
+  for x in xrange(1, len(dg)):
     src = find(boss, x)
-    ys = dg[x]
-    for y in ys:
+    tw = 0
+    for w in dg[x].itervalues():
+      tw += w
+    for y, w in dg[x].iteritems():
       tgt = find(boss, y)
       if src == tgt:
         continue
       if tgt not in g[src]:
         g[src][tgt] = g[tgt][src] = 0.0
-      g[src][tgt] += 1.0 / len(ys)
-      g[tgt][src] += 1.0 / len(ys)
+      g[src][tgt] += 1.0 * w / tw
+      g[tgt][src] += 1.0 * w / tw
   return g
 
 # See Flake et al. 2004.
-def cut_clustering(g, boss):
+def cut_clustering(g, boss, name_of_index):
   stderr.write('clustering {0} nodes\n'.format(len(g)))
   t1 = time()
   total_weight = dict()
@@ -117,9 +120,9 @@ def cut_clustering(g, boss):
     while True:
       pred = dict()
       seen = set([x])
-      q = [x]
+      q = deque([x])
       while len(q) > 0:
-        y, q = q[0], q[1:]
+        y = q.popleft()
         if y == 0:
           break
         for z, w in rn[y].iteritems():
@@ -148,6 +151,7 @@ def cut_clustering(g, boss):
       t1 = t2
       stderr.write('  {0: >4.0%} clustered\n'.format(float(len(touched))/len(g)))
 
+
 def pagerank(dg, cluster):
   if len(cluster) > 99:
     cnt = 0
@@ -165,9 +169,9 @@ def pagerank(dg, cluster):
   # create the adjacency matrix
   G = matrix(zeros((n,n)))
   for x in cluster:
-    for y in dg[x]:
+    for y, w in dg[x].iteritems():
       if y in cluster:
-        G[compressed[y], compressed[x]] = 1.0
+        G[compressed[y], compressed[x]] = w
     G[compressed[x], 0] = G[0, compressed[x]] = 1.0
 
   # iterate
@@ -190,24 +194,8 @@ def pagerank(dg, cluster):
     stderr.write('\n')
   return result
 
-def simple_cluster_ordering(dg, cluster):
-  weight = dict()
-  for x in cluster:
-    weight[x] = 1
-  for tgts in dg:
-    for y in tgts:
-      if y in cluster:
-        weight[y] += 1.0 / len(tgts)
-  result = list(cluster)
-  result.sort(lambda x, y: cmp(weight[y], weight[x]))
-  return result
-
 def order_cluster(dg, cluster):
-  if len(cluster) > 3000:
-    stderr.write('quickly ordering cluster of {0}\n'.format(len(cluster)))
-    return simple_cluster_ordering(dg, cluster)
-  else:
-    return pagerank(dg, cluster)
+  return pagerank(dg, cluster)
 
 def compute_children(old_boss, new_boss):
   assert len(old_boss) == len(new_boss)
@@ -229,12 +217,10 @@ def get_cluster(children, level, x):
   return r
 
 def describe_cluster(words_of_user, cluster):
-  bad = set('@1234567890')
   interesting_words = set()
   for u in cluster:
     for w in words_of_user[u].iterkeys():
-      if bad.isdisjoint(set(w)):
-        interesting_words.add(w)
+      interesting_words.add(w)
   inside = dict([(w,0) for w in interesting_words])
   outside = dict([(w,0) for w in interesting_words])
   for u in xrange(1, len(words_of_user)):
@@ -253,9 +239,9 @@ def describe_cluster(words_of_user, cluster):
     else:
       heappush(h2, (-1.0*inside[w]/outside[w], w))
   result = []
-  while len(h1) > 0 and len(result) < 5:
-    _, w = heappop(h1)
-    result.append(w)
+#  while len(h1) > 0 and len(result) < 5:
+#    _, w = heappop(h1)
+#    result.append(w)
   while len(h2) > 0 and len(result) < 5:
     _, w = heappop(h2)
     result.append(w)
@@ -296,7 +282,7 @@ def main():
   for alpha in [0.1, 0.01, 0.005, 0]:
     graph = make_undirected(orig_graph, boss, alpha)
     old_boss = [x for x in boss]
-    cut_clustering(graph, boss)
+    cut_clustering(graph, boss, name_of_index)
     children.append(compute_children(old_boss, boss))
   children.append(compute_children(boss, [0 for _ in boss]))
   children.reverse()

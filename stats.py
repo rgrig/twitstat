@@ -225,17 +225,27 @@ def dump_histogram(histo, forms, filename):
       file.write(' )\n')
 #}}}
 
-#{{{ graph related operations
-def save_clustering_info(words_of_user):
-  with closing(shelve.open('clustering.shelf', 'n')) as f:
-    for user, words in words_of_user.iteritems():
-      mentions = set()
-      for w in words:
+def save_histograms(words_of_user, urls_of_user):
+  def get(d, u):
+    if u in d:
+      return d[u]
+    else:
+      return dict()
+  all_users = set()
+  all_users.update(words_of_user.iterkeys())
+  all_users.update(urls_of_user.iterkeys())
+  with closing(shelve.open('histograms', 'n')) as f:
+    for u in all_users:
+      words = get(words_of_user, u)
+      urls = get(urls_of_user, u)
+      mentions = dict()
+      for w, cnt in words.iteritems():
         if w.startswith('@'):
-          mentions.add(w[1:])
-      _, user = normalize_word(user)
-      f[user] = (words, mentions)
-#}}}
+          wn = w[1:]
+          mentions[wn] = 1 + mentions.setdefault(wn, 0)
+      _, un = normalize_word(u)
+      data = {'urls' : dict(), 'words' : dict()}
+      f[un] = {'words' : words, 'urls' : urls, 'mentions' : mentions}
 
 #{{{ cmd line parsing
 def parse_command_line():
@@ -297,21 +307,14 @@ def extract_and_bin():
 
 def main():
   parse_command_line()
-  here('initializare')
   extract_and_bin()
-  here('extracted and binned')
-
-  # compute histograms for words and for urls
-  words_of_user, word_forms = match_and_bin(WORD_REGEX, normalize_all_words)
-  words = aggregate_histograms(words_of_user, lambda x: x)
-  dump_histogram(words, word_forms, 'words.txt')
-  here('words.txt')
-  save_clustering_info(words_of_user)
-  here('clustering.shelf')
-  urls_of_user, url_forms = match_and_bin(URL_REGEX, normalize_all_urls)
-  urls = aggregate_histograms(urls_of_user, lambda _: 1)
-  dump_histogram(urls, url_forms, 'urls.txt')
-  here('urls.txt')
+  here('read database')
+  words_of_user, _ = match_and_bin(WORD_REGEX, normalize_all_words)
+  here('got words')
+  urls_of_user, _ = match_and_bin(URL_REGEX, normalize_all_urls)
+  here('got urls')
+  save_histograms(words_of_user, urls_of_user)
+  here('saved histograms')
 
 if __name__ == '__main__':
   main()

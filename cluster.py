@@ -4,7 +4,6 @@
 from collections import deque
 from contextlib import closing
 from heapq import heappop, heappush
-from numpy import zeros, ones, matrix
 from random import randint
 from re import search
 import shelve
@@ -293,18 +292,9 @@ def old_main():
 
 def print_users_top(top):
   T1 = '<li><a href="http://twitter.com/NAME/">@NAME</a></li>\n'
-  T2 = '<a href="http://search.twitter.com/search?from=NAME&q=KWE">KW</a>'
   with open('users_top.html', 'w') as f:
     for u in top:
-      od = []
-      for kw in u['descr']:
-        s = T2
-        s = s.replace('NAME', u['name'])
-        s = s.replace('KWE', quote(kw))
-        s = s.replace('KW', kw)
-        od.append(s)
-      descr = '\n'.join(od)
-      f.write(T1.replace('NAME', u['name']).replace('DESCR', descr))
+      f.write(T1.replace('NAME', u))
 
 def get_top(d, cnt):
   h = []
@@ -319,16 +309,16 @@ def get_top(d, cnt):
   r.reverse()
   return r
 
-def rank_urls(score_of_user, urls_of_user):
-  url_score = dict()
-  for u in xrange(1, len(urls_of_user)):
-    urls = urls_of_user[u] 
+def rank_refs(score_of_user, refs_of_user):
+  ref_score = dict()
+  for u in xrange(1, len(refs_of_user)):
+    refs = refs_of_user[u] 
     tw = 0.0
-    for w in urls.itervalues():
+    for w in refs.itervalues():
       tw += w
-    for url, w in urls.iteritems():
-      url_score[url] = score_of_user[u] * w / tw + url_score.setdefault(url, 0.0)
-  return get_top(url_score, 10)
+    for r, w in refs.iteritems():
+      ref_score[r] = score_of_user[u] * w / tw + ref_score.setdefault(r, 0.0)
+  return get_top(ref_score, 10)
 
 def title_of_url(url):
   try:
@@ -346,25 +336,21 @@ def print_urls_top(top):
       title = title_of_url(url)
       f.write(T.replace('URL', url).replace('TITLE', title))
 
+def print_words_top(top):
+  T = '<li><a href="http://search.twitter.com/search?q=WORDENC&since=DATE&until=DATE">WORD</a></li>\n'
+  with open('words_top.html', 'w') as f:
+    for w in top:
+      s = T
+      s = s.replace('WORDENC', quote(w))
+      s = s.replace('WORD', w)
+      f.write(s)
+
 def main():
   words_of_user, urls_of_user, name_of_index, dg = parse_graph()
   score = pagerank(dg, set(range(1,len(dg))))
-  best = []
-  for u in xrange(1, len(dg)):
-    heappush(best, (score[u], u))
-    if len(best) > 10:
-      heappop(best)
-  top = []
-  tmp = set()
-  while len(best) > 0:
-    _, u = heappop(best)
-    tmp.add(u)
-    descr = describe_cluster(words_of_user, set([u]))
-    top.append({'name' : name_of_index[u], 'descr' : descr})
-  print describe_cluster(words_of_user, tmp)
-  top.reverse()
-  print_users_top(top)
-  print_urls_top(rank_urls(score, urls_of_user))
+  print_users_top([name_of_index[u] for u in get_top(score, 11)])
+  print_urls_top(rank_refs(score, urls_of_user))
+  print_words_top(rank_refs(score, words_of_user))
 
 if __name__ == '__main__':
   main()

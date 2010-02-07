@@ -3,7 +3,7 @@ version: public
 runtime: python
 api_version: 1
 
-default_expiration: "6h"
+default_expiration: "1h"
  
 handlers:
 - url: /

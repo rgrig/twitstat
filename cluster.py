@@ -337,7 +337,7 @@ def print_urls_top(top):
       f.write(T.replace('URL', url).replace('TITLE', title))
 
 def print_words_top(top):
-  T = '<li><a href="http://search.twitter.com/search?q=WORDENC&since=DATE&until=DATE">WORD</a></li>\n'
+  T = '<li><a href="http://search.twitter.com/search?q=WORDENC&near=bucharest&since=DATE&until=DATE">WORD</a></li>\n'
   with open('words_top.html', 'w') as f:
     for w in top:
       s = T

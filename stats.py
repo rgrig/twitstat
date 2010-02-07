@@ -236,13 +236,16 @@ def save_histograms(words_of_user, urls_of_user):
   all_users.update(urls_of_user.iterkeys())
   with closing(shelve.open('histograms', 'n')) as f:
     for u in all_users:
-      words = get(words_of_user, u)
       urls = get(urls_of_user, u)
+      old_words = get(words_of_user, u)
       mentions = dict()
-      for w, cnt in words.iteritems():
+      words = dict()
+      for w, cnt in old_words.iteritems():
         if w.startswith('@'):
           wn = w[1:]
-          mentions[wn] = 1 + mentions.setdefault(wn, 0)
+          mentions[wn] = cnt
+        else:
+          words[w] = cnt
       _, un = normalize_word(u)
       data = {'urls' : dict(), 'words' : dict()}
       f[un] = {'words' : words, 'urls' : urls, 'mentions' : mentions}

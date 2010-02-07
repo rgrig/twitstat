@@ -21,8 +21,9 @@ def download_specials():
   url = URL_BASE + '?q=' + '+OR+'.join(['from:' + x for x in argv[1:]])
   url += '&rpp=100'
   with closing(shelve.open('statuses/data')) as db:
-    for i in xrange(1,5):
-      print url + '&page=' + str(i) 
+    for i in xrange(1,16):
+      sleep(25)
+      print 'getting page', i
       page = json.load(urlopen(url + '&page=' + str(i)))
       if i == 1:
         url += '&max_id=' + str(page['max_id'])
@@ -31,11 +32,12 @@ def download_specials():
         text = r['text']
         id = int(r['id'])
         time = timegm(strptime(r['created_at'], '%a, %d %b %Y %H:%M:%S +0000'))
+        #if str(id) in db: return
         db[str(id)] = {'user' : user, 'time' : time, 'text' : text}
 
 def reindex():
-  with closing(shelve.open('statuses/data', 'c')) as db:
-    with closing(shelve.open('statuses/index', 'c')) as idx:
+  with closing(shelve.open('statuses/data')) as db:
+    with closing(shelve.open('statuses/index')) as idx:
       i = 0
       statuses = [int(x) for x in db.keys()]
       statuses.sort()

@@ -1,0 +1,48 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ro">
+<head>
+  <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+  <meta http-equiv="Content-Script-Type" content="text/javascript"/>
+  <style type="text/css">@import url('style.css');</style>
+  <script type="text/javascript" src="jquery.js"></script>
+  <script type="text/javascript" src="jquery.corner.js"></script>
+
+  <script  type="text/javascript">
+  $(function() { $('#container').corner();});
+  $(function() { $('#header').corner();});
+  $(function() { $('.block').corner();});
+  $(function() { $('.blockbody').corner();});
+  $(function() { $('p').corner();});
+  </script>
+
+  <title>Bârfe din Bucuresti</title>
+</head>
+
+<body>
+
+<div id="container">
+<div id="header">
+<div id="title">Bârfe din București</div>
+<div id="subtitle">DATA</div>
+</div>
+
+<div class="block">
+<div class="blocktitle">bârfitori de seamă</div>
+<ol class="blockbody">
+USERS_TOP
+</ol>
+</div>
+
+<div class="block">
+<div class="blocktitle">de văzut</div>
+<ol class="blockbody">
+URLS_TOP
+</ol>
+</div>
+
+</div>  <!-- container -->
+
+</body>
+</html>
+<!-- vim: set fileencoding=utf-8 : -->

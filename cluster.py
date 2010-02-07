@@ -6,9 +6,12 @@ from contextlib import closing
 from heapq import heappop, heappush
 from numpy import zeros, ones, matrix
 from random import randint
+from re import search
 import shelve
 from sys import argv, exit, stderr, stdin, stdout
 from time import time
+from urllib import quote
+from urllib2 import urlopen
 
 # Reading guide:
 #   g   is a graph
@@ -57,12 +60,15 @@ def parse_graph():
       name_of_index.append(n)
   names_count += 1
   words_of_user = [dict()]
+  urls_of_user = [dict()]
   with closing(shelve.open('histograms', 'r')) as f:
     for n in name_of_index[1:]:
       if n in f:
         words_of_user.append(f[n]['words'])
+        urls_of_user.append(f[n]['urls'])
       else:
         words_of_user.append(dict())
+        urls_of_user.append(dict())
 
   # Get the graph, and use numbers to represent it.
   graph = [dict() for _ in xrange(names_count)]
@@ -72,7 +78,7 @@ def parse_graph():
       for tgt, w in f[src]['mentions'].iteritems():
         if tgt != src:
           src_dict[index_of_name[tgt]] = w
-  return (words_of_user, name_of_index, graph)
+  return (words_of_user, urls_of_user, name_of_index, graph)
 
 def make_undirected(dg, boss, alpha):
   g = dict()
@@ -151,8 +157,7 @@ def cut_clustering(g, boss, name_of_index):
       t1 = t2
       stderr.write('  {0: >4.0%} clustered\n'.format(float(len(touched))/len(g)))
 
-# iterative pagerank
-def order_cluster(dg, cluster):
+def pagerank(dg, cluster):
   REP_LIMIT = 100
   if len(cluster) > REP_LIMIT:
     stderr.write('ranking {0} users... '.format(len(cluster)))
@@ -173,9 +178,9 @@ def order_cluster(dg, cluster):
 
   score = dict.fromkeys(g.iterkeys(), 1.0)
   new_score = dict.fromkeys(g.iterkeys(), 0.0)
-  for i in xrange(1000):
+  for i in xrange(max(1000, len(cluster))):
     if len(cluster) > REP_LIMIT:
-      if time() - t1 > 10:
+      if time() - t1 > 60:
         stderr.write('stoping early after {0} iterations... '.format(i))
         break
     for x, ys in g.iteritems():
@@ -184,10 +189,14 @@ def order_cluster(dg, cluster):
     score = new_score
     new_score = dict.fromkeys(g.iterkeys(), 0.0)
 
-  result = list(cluster)
-  result.sort(lambda x, y: cmp(score[y], score[x]))
   if len(cluster) > REP_LIMIT:
     stderr.write('done in {0:.2f} seconds\n'.format(time()-t1))
+  return score
+
+def order_cluster(dg, cluster):
+  score = pagerank(dg, cluster)
+  result = list(cluster)
+  result.sort(lambda x, y: cmp(score[y], score[x]))
   return result
 
 def compute_children(old_boss, new_boss):
@@ -232,10 +241,11 @@ def describe_cluster(words_of_user, cluster):
     else:
       heappush(h2, (-1.0*inside[w]/outside[w], w))
   result = []
-#  while len(h1) > 0 and len(result) < 5:
-#    _, w = heappop(h1)
-#    result.append(w)
-  while len(h2) > 0 and len(result) < 5:
+  while len(h1) > 0 and len(result) < 5:
+    _, w = heappop(h1)
+    result.append(w)
+  result.append('***')
+  while len(h2) > 0 and len(result) < 11:
     _, w = heappop(h2)
     result.append(w)
   return result
@@ -268,8 +278,8 @@ def print_clusters(words_of_user, name_of_index, orig_graph, children, pl, level
     stdout.write('\n')
     print_clusters(words_of_user, name_of_index, orig_graph, children, pl + 1, level + 1, x)
 
-def main():
-  words_of_user, name_of_index, orig_graph = parse_graph()
+def old_main():
+  words_of_user, _, name_of_index, orig_graph = parse_graph()
   boss = range(len(orig_graph))
   children = []
   for alpha in [0.1, 0.01, 0.005, 0]:
@@ -280,6 +290,81 @@ def main():
   children.append(compute_children(boss, [0 for _ in boss]))
   children.reverse()
   print_clusters(words_of_user, name_of_index, orig_graph, children, 0, 0, 0)
+
+def print_users_top(top):
+  T1 = '<li><a href="http://twitter.com/NAME/">@NAME</a></li>\n'
+  T2 = '<a href="http://search.twitter.com/search?from=NAME&q=KWE">KW</a>'
+  with open('users_top.html', 'w') as f:
+    for u in top:
+      od = []
+      for kw in u['descr']:
+        s = T2
+        s = s.replace('NAME', u['name'])
+        s = s.replace('KWE', quote(kw))
+        s = s.replace('KW', kw)
+        od.append(s)
+      descr = '\n'.join(od)
+      f.write(T1.replace('NAME', u['name']).replace('DESCR', descr))
+
+def get_top(d, cnt):
+  h = []
+  for k, v in d.iteritems():
+    heappush(h, (v, k))
+    if len(h) > cnt:
+      heappop(h)
+  r = []
+  while len(h) > 0:
+    _, k = heappop(h)
+    r.append(k)
+  r.reverse()
+  return r
+
+def rank_urls(score_of_user, urls_of_user):
+  url_score = dict()
+  for u in xrange(1, len(urls_of_user)):
+    urls = urls_of_user[u] 
+    tw = 0.0
+    for w in urls.itervalues():
+      tw += w
+    for url, w in urls.iteritems():
+      url_score[url] = score_of_user[u] * w / tw + url_score.setdefault(url, 0.0)
+  return get_top(url_score, 10)
+
+def title_of_url(url):
+  try:
+    text = urlopen(url).read()
+    title = search('<title>(.*)</title>', text).group(1)
+    title = title.lower()
+    return title
+  except:
+    return url
+
+def print_urls_top(top):
+  T = '<li><a href="URL">\nTITLE\n</a></li>\n'
+  with open('urls_top.html', 'w') as f:
+    for url in top:
+      title = title_of_url(url)
+      f.write(T.replace('URL', url).replace('TITLE', title))
+
+def main():
+  words_of_user, urls_of_user, name_of_index, dg = parse_graph()
+  score = pagerank(dg, set(range(1,len(dg))))
+  best = []
+  for u in xrange(1, len(dg)):
+    heappush(best, (score[u], u))
+    if len(best) > 10:
+      heappop(best)
+  top = []
+  tmp = set()
+  while len(best) > 0:
+    _, u = heappop(best)
+    tmp.add(u)
+    descr = describe_cluster(words_of_user, set([u]))
+    top.append({'name' : name_of_index[u], 'descr' : descr})
+  print describe_cluster(words_of_user, tmp)
+  top.reverse()
+  print_users_top(top)
+  print_urls_top(rank_urls(score, urls_of_user))
 
 if __name__ == '__main__':
   main()

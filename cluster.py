@@ -151,51 +151,44 @@ def cut_clustering(g, boss, name_of_index):
       t1 = t2
       stderr.write('  {0: >4.0%} clustered\n'.format(float(len(touched))/len(g)))
 
-
-def pagerank(dg, cluster):
-  if len(cluster) > 99:
-    cnt = 0
+# iterative pagerank
+def order_cluster(dg, cluster):
+  REP_LIMIT = 100
+  if len(cluster) > REP_LIMIT:
+    stderr.write('ranking {0} users... '.format(len(cluster)))
     t1 = time()
-    stderr.write('ordering cluster of {0} users'.format(len(cluster)))
-  # map cluster elements to 1..n
-  n = 0
-  compressed = dict()
-  compressed[0] = 0
+  g = dict([(x, dict()) for x in cluster])
+  g[0] = dict()
   for x in cluster:
-    n += 1
-    compressed[x] = n
-  n += 1
-  
-  # create the adjacency matrix
-  G = matrix(zeros((n,n)))
-  for x in cluster:
+    tw = 1  # for the edge going to 0
     for y, w in dg[x].iteritems():
       if y in cluster:
-        G[compressed[y], compressed[x]] = w
-    G[compressed[x], 0] = G[0, compressed[x]] = 1.0
+        tw += w
+    g[0][x] = 1.0 / tw
+    for y, w in dg[x].iteritems():
+      if y in cluster:
+        g[y][x] = 1.0 * w / tw
+  for x in cluster:
+    g[x][0] = 1.0 / len(cluster)
 
-  # iterate
-  t0 = time()
-  c = ones(n)
-  G = G / (c * G)
-  for i in xrange(10):
-    if time() - t0 > 3:
-      if i > 3:
+  score = dict.fromkeys(g.iterkeys(), 1.0)
+  new_score = dict.fromkeys(g.iterkeys(), 0.0)
+  for i in xrange(1000):
+    if len(cluster) > REP_LIMIT:
+      if time() - t1 > 10:
+        stderr.write('stoping early after {0} iterations... '.format(i))
         break
-      if len(cluster) > 99:
-        stderr.write('.')
-    G = G * G
-    G = G / (c * G)
-  score = G * ones((n,1))
+    for x, ys in g.iteritems():
+      for y, w in ys.iteritems():
+        new_score[x] += score[y] * w
+    score = new_score
+    new_score = dict.fromkeys(g.iterkeys(), 0.0)
 
   result = list(cluster)
-  result.sort(lambda x, y: cmp(score[compressed[y]], score[compressed[x]]))
-  if len(cluster) > 99:
-    stderr.write('\n')
+  result.sort(lambda x, y: cmp(score[y], score[x]))
+  if len(cluster) > REP_LIMIT:
+    stderr.write('done in {0:.2f} seconds\n'.format(time()-t1))
   return result
-
-def order_cluster(dg, cluster):
-  return pagerank(dg, cluster)
 
 def compute_children(old_boss, new_boss):
   assert len(old_boss) == len(new_boss)

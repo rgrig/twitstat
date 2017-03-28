@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # vim: set fileencoding=utf-8 :
 
 from calendar import timegm
@@ -8,7 +8,8 @@ import re
 import shelve
 from sys import argv, exit, stderr, stdout
 from time import localtime, mktime, strftime, struct_time, time
-from urllib2 import urlopen
+
+import requests
 
 #{{{ usage
 USAGE = """usage: ./stats.py [start_time [stop_time]]
@@ -20,19 +21,12 @@ stop_time is 24 hours after start_time. The time "20100120" means
 digits yyyymmddhhMMss. If some digits at the end are missing they
 default to 0. All times are local.
 
-The program creates three files.
+The program creates two files.
   transcript.txt
     contains statuses in the specified range, one per line in the
     format 'AUTHOR: STATUS'
-  words.txt
-    contains the most used words, one per line in the format 'N W
-    (AUTHORS) (FORMS)', where
-      N is the number of AUTHORS that mentioned word W
-      and FORMS are various forms of the word that were used
-  urls.txt
-    contains the most  mentioned http links, one per  line in the
-    format 'N URL (AUTHORS) (FORMS)', where
-      N is the number of AUTHORS that mentioned URL
+  histograms
+    contains words and urls, with counts
 
 The program expects a database of Twitter statuses in ./statuses.
 """
@@ -43,7 +37,7 @@ proftime = time()
 def here(s):
   global proftime
   nt = time()
-  print s, nt - proftime
+  print(s, nt - proftime)
   proftime = nt
 
 # These are utilities for building regular expressions.
@@ -56,7 +50,7 @@ def alt(l):
 
 ROMNICE = u'ăîÎșşȘțţȚŢâÂăĂ'
 ROMUGLY = u'aiIssSttTTaAaA'
-ROMSIMPL = dict([(ROMNICE[i], ROMUGLY[i]) for i in xrange(len(ROMNICE))])
+ROMSIMPL = dict([(ROMNICE[i], ROMUGLY[i]) for i in range(len(ROMNICE))])
 WORD_REGEX = u'[@#]?[a-zA-Z0-9' + ROMNICE + u'_-]{3,}'
 # see RFC1738
 hex = '[0-9a-fA-F]'
@@ -71,7 +65,10 @@ domainlabel = '[a-zA-Z0-9]' + opt(lst('[a-zA-Z0-9]|-') + '[a-zA-Z0-9]')
 hostname = lst(domainlabel + r'\.') + toplabel
 host = alt([hostname, hostnumber])
 hostport = host + opt(':[0-9]+')
-URL_REGEX = 'http://' + hostport + opt('/' + hpath + opt(r'\?' + hsegment))
+URL_REGEX = 'http' + opt('s') + '://' + hostport + opt('/' + hpath + opt(r'\?' + hsegment))
+
+# hack
+URL_REGEX = 'https://t.co/[0-9a-zA-Z]+'
 with open('stopwords', 'r') as f:
   STOPWORDS = set([x.strip() for x in f.readlines()])
 
@@ -104,23 +101,19 @@ def normalize_word(w):
     return ROMSIMPL[c]
   wn = ''.join([romsimpl(c) for c in w]) 
   wn = wn.lower()
-  if isinstance(wn, unicode):
-    wn = wn.encode('utf-8')
   return (w, wn)
 
 def normalize_url(u):
   try:
-    un = urlopen(u, timeout=10).geturl()
+    un = urlopen(u, timeout=10).url
   except Exception as e:
     un = u
-  if isinstance(un, unicode):
-    un = un.encode('utf-8')
   return (u, un)
 
 def normalize_all_words(l):
   r = dict()
   processes = Pool(max(1, cpu_count()-1))
-  for s in l.itervalues():
+  for s in l.values():
     for w, wn in processes.imap_unordered(normalize_word, s):
       r[w] = wn
   return r
@@ -129,27 +122,27 @@ def normalize_all_urls(l):
   r = dict()
   with closing(shelve.open('statuses/urls')) as cache:
     all_urls = set()
-    for s in l.itervalues():
+    for s in l.values():
       for u in s:
         all_urls.add(u)
-    print '  ', len(all_urls), 'urls to normalize'
+    print('  ', len(all_urls), 'urls to normalize')
     unknown_urls = []
     for u in all_urls:
       try:
-        r[u] = cache[u.encode('utf-8')]
+        r[u] = cache[u]
       except KeyError:
         unknown_urls.append(u)
-    print '  ', len(unknown_urls), 'urls to normalize online'
+    print('  ', len(unknown_urls), 'urls to normalize online')
     processes = Pool(25)
     for u, un in processes.imap_unordered(normalize_url, unknown_urls, 10):
       r[u] = un
-      cache[u.encode('utf-8')] = un
+      cache[u] = un
   return r
 
 def dummy_normalize(l):
   '''For testing.'''
   r = dict()
-  for s in l.itervalues():
+  for s in l.values():
     for m in s:
       r[m] = m
   return r
@@ -173,7 +166,7 @@ def match_and_bin(regex, normalize):
   # for each user, list the matches, then normalize
   pattern = re.compile(regex)
   matches = dict()
-  for user, statuses in statuses_of_user.iteritems():
+  for user, statuses in statuses_of_user.items():
     user_matches = []
     for s in statuses:
       for m in re.finditer(pattern, s):
@@ -185,7 +178,7 @@ def match_and_bin(regex, normalize):
   # also, for each normalized match, compute the set of forms
   histo_of_user = dict()
   forms = dict()
-  for user, user_matches in matches.iteritems():
+  for user, user_matches in matches.items():
     histo = dict()
     for m in user_matches:
       mn = normalized[m]
@@ -202,8 +195,8 @@ def match_and_bin(regex, normalize):
 
 def aggregate_histograms(histo_of_user, filter):
   histo = dict()
-  for counts in histo_of_user.itervalues():
-    for match, count in counts.iteritems():
+  for counts in histo_of_user.values():
+    for match, count in counts.items():
       if match not in histo:
         histo[match] = 0
       histo[match] += filter(count)
@@ -211,7 +204,7 @@ def aggregate_histograms(histo_of_user, filter):
 
 def dump_histogram(histo, forms, filename):
   '''print in decreasing order of frequency'''
-  list = [(cnt, m) for m, cnt in histo.iteritems()]
+  list = [(cnt, m) for m, cnt in histo.items()]
   list.sort(lambda x, y: cmp(y, x))
   with open(filename, 'w') as file:
     for n, m in list:
@@ -220,8 +213,7 @@ def dump_histogram(histo, forms, filename):
       file.write(m)
       file.write(' (')
       for form in forms[m]:
-        file.write(' ')
-        file.write(form.encode('utf-8'))
+        file.write(' {}'.format(form))
       file.write(' )\n')
 #}}}
 
@@ -232,15 +224,15 @@ def save_histograms(words_of_user, urls_of_user):
     else:
       return dict()
   all_users = set()
-  all_users.update(words_of_user.iterkeys())
-  all_users.update(urls_of_user.iterkeys())
+  all_users.update(words_of_user.keys())
+  all_users.update(urls_of_user.keys())
   with closing(shelve.open('histograms', 'n')) as f:
     for u in all_users:
       urls = get(urls_of_user, u)
       old_words = get(words_of_user, u)
       mentions = dict()
       words = dict()
-      for w, cnt in old_words.iteritems():
+      for w, cnt in old_words.items():
         if w.startswith('@'):
           wn = w[1:]
           mentions[wn] = cnt
@@ -284,13 +276,13 @@ def extract_and_bin():
       low, high = -1, size
       while low + 1 < high:
         binstep += 1
-        middle = (low + high) / 2
+        middle = (low + high) // 2
         status_time = db[idx[str(middle)]]['time']
         if status_time < start_time:
           low = middle
         else:
           high = middle
-      print '  binstep',binstep
+      print('  binstep',binstep)
       low += 1
       here('binsearch')
       with open('transcript.txt', 'w') as transcript:
@@ -302,10 +294,10 @@ def extract_and_bin():
           if status['user'] not in statuses_of_user:
             statuses_of_user[status['user']] = []
           statuses_of_user[status['user']].append(status['text'])
-          transcript.write(id + ' ')
-          transcript.write(status['user'].encode('utf-8') + ': ')
-          transcript.write(status['text'].encode('utf-8').replace('\n', '  '))
-          transcript.write('\n')
+          transcript.write('{} {}: {}\n'.format(
+            id,
+            status['user'],
+            status['text'].replace('\n', '   ')))
           low += 1
 
 def main():

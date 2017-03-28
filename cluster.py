@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # vim: set fileencoding=utf-8 :
 
 from collections import deque
@@ -8,9 +8,10 @@ from random import randint
 from re import search
 import shelve
 from sys import argv, exit, stderr, stdin, stdout
-from time import time
-from urllib import quote
-from urllib2 import urlopen
+from time import strftime, time
+from urllib.parse import quote
+
+import requests
 
 # Reading guide:
 #   g   is a graph
@@ -47,7 +48,7 @@ def parse_graph():
   with closing(shelve.open('histograms', 'r')) as f:
     for src in f.keys():
       all_names.add(src)
-      for tgt in f[src]['mentions'].iterkeys():
+      for tgt in f[src]['mentions'].keys():
         all_names.add(tgt)
   index_of_name = dict()
   name_of_index = ['*ARTIFICIAL*']
@@ -70,11 +71,11 @@ def parse_graph():
         urls_of_user.append(dict())
 
   # Get the graph, and use numbers to represent it.
-  graph = [dict() for _ in xrange(names_count)]
+  graph = [dict() for _ in range(names_count)]
   with closing(shelve.open('histograms', 'r')) as f:
     for src in f.keys():
       src_dict = graph[index_of_name[src]]
-      for tgt, w in f[src]['mentions'].iteritems():
+      for tgt, w in f[src]['mentions'].items():
         if tgt != src:
           src_dict[index_of_name[tgt]] = w
   return (words_of_user, urls_of_user, name_of_index, graph)
@@ -82,19 +83,19 @@ def parse_graph():
 def make_undirected(dg, boss, alpha):
   g = dict()
   g[0] = dict()
-  for x in xrange(1, len(dg)):
+  for x in range(1, len(dg)):
     y = find(boss, x)
     if y not in g:
       g[y] = dict([(0,0)])
       g[0][y] = 0
     g[y][0] += alpha
     g[0][y] += alpha
-  for x in xrange(1, len(dg)):
+  for x in range(1, len(dg)):
     src = find(boss, x)
     tw = 0
-    for w in dg[x].itervalues():
+    for w in dg[x].values():
       tw += w
-    for y, w in dg[x].iteritems():
+    for y, w in dg[x].items():
       tgt = find(boss, y)
       if src == tgt:
         continue
@@ -109,19 +110,19 @@ def cut_clustering(g, boss, name_of_index):
   stderr.write('clustering {0} nodes\n'.format(len(g)))
   t1 = time()
   total_weight = dict()
-  for x, ys in g.iteritems():
+  for x, ys in g.items():
     if x != 0:
       total_weight[x] = 0
-      for w in ys.itervalues():
+      for w in ys.values():
         total_weight[x] -= w
-  nodes = [(w, x) for (x, w) in total_weight.iteritems()]
+  nodes = [(w, x) for (x, w) in total_weight.items()]
   nodes.sort()
   touched = set()
   for _, x in nodes:
     if x in touched:
       continue
     # max flow / min cut
-    rn = dict([(src, dict(tgts)) for (src, tgts) in g.iteritems()])
+    rn = dict([(src, dict(tgts)) for (src, tgts) in g.items()])
     while True:
       pred = dict()
       seen = set([x])
@@ -130,7 +131,7 @@ def cut_clustering(g, boss, name_of_index):
         y = q.popleft()
         if y == 0:
           break
-        for z, w in rn[y].iteritems():
+        for z, w in rn[y].items():
           if w > 0 and z not in seen:
             seen.add(z)
             q.append(z)
@@ -165,28 +166,28 @@ def pagerank(dg, cluster):
   g[0] = dict()
   for x in cluster:
     tw = 1  # for the edge going to 0
-    for y, w in dg[x].iteritems():
+    for y, w in dg[x].items():
       if y in cluster:
         tw += w
     g[0][x] = 1.0 / tw
-    for y, w in dg[x].iteritems():
+    for y, w in dg[x].items():
       if y in cluster:
         g[y][x] = 1.0 * w / tw
   for x in cluster:
     g[x][0] = 1.0 / len(cluster)
 
-  score = dict.fromkeys(g.iterkeys(), 1.0)
-  new_score = dict.fromkeys(g.iterkeys(), 0.0)
-  for i in xrange(max(1000, len(cluster))):
+  score = dict.fromkeys(g.keys(), 1.0)
+  new_score = dict.fromkeys(g.keys(), 0.0)
+  for i in range(max(1000, len(cluster))):
     if len(cluster) > REP_LIMIT:
       if time() - t1 > 60:
         stderr.write('stoping early after {0} iterations... '.format(i))
         break
-    for x, ys in g.iteritems():
-      for y, w in ys.iteritems():
+    for x, ys in g.items():
+      for y, w in ys.items():
         new_score[x] += score[y] * w
     score = new_score
-    new_score = dict.fromkeys(g.iterkeys(), 0.0)
+    new_score = dict.fromkeys(g.keys(), 0.0)
 
   if len(cluster) > REP_LIMIT:
     stderr.write('done in {0:.2f} seconds\n'.format(time()-t1))
@@ -201,7 +202,7 @@ def order_cluster(dg, cluster):
 def compute_children(old_boss, new_boss):
   assert len(old_boss) == len(new_boss)
   c = dict()
-  for x in xrange(1, len(new_boss)):
+  for x in range(1, len(new_boss)):
     ob = find(old_boss, x)
     nb = find(new_boss, x)
     if nb not in c:
@@ -220,11 +221,11 @@ def get_cluster(children, level, x):
 def describe_cluster(words_of_user, cluster):
   interesting_words = set()
   for u in cluster:
-    for w in words_of_user[u].iterkeys():
+    for w in words_of_user[u].keys():
       interesting_words.add(w)
   inside = dict([(w,0) for w in interesting_words])
   outside = dict([(w,0) for w in interesting_words])
-  for u in xrange(1, len(words_of_user)):
+  for u in range(1, len(words_of_user)):
     if u in cluster:
       d = inside
     else:
@@ -298,7 +299,7 @@ def print_users_top(top):
 
 def get_top(d, cnt):
   h = []
-  for k, v in d.iteritems():
+  for k, v in d.items():
     heappush(h, (v, k))
     if len(h) > cnt:
       heappop(h)
@@ -311,18 +312,18 @@ def get_top(d, cnt):
 
 def rank_refs(score_of_user, refs_of_user):
   ref_score = dict()
-  for u in xrange(1, len(refs_of_user)):
+  for u in range(1, len(refs_of_user)):
     refs = refs_of_user[u] 
     tw = 0.0
-    for w in refs.itervalues():
+    for w in refs.values():
       tw += w
-    for r, w in refs.iteritems():
+    for r, w in refs.items():
       ref_score[r] = score_of_user[u] * w / tw + ref_score.setdefault(r, 0.0)
   return get_top(ref_score, 10)
 
 def title_of_url(url):
   try:
-    text = urlopen(url).read()
+    text = requests.get(url).content
     title = search('<title>(.*)</title>', text).group(1)
     title = title.lower()
     return title
@@ -337,7 +338,7 @@ def print_urls_top(top):
       f.write(T.replace('URL', url).replace('TITLE', title))
 
 def print_words_top(top):
-  T = '<li><a href="http://search.twitter.com/search?q=WORDENC&near=bucharest&since=DATE&until=DATE">WORD</a></li>\n'
+  T = '<li><a href="https://twitter.com/search?q=WORDENC%20near%3Abucharest%20since%3ADATE">WORD</a></li>\n'
   with open('words_top.html', 'w') as f:
     for w in top:
       s = T

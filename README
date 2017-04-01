@@ -1,5 +1,5 @@
 normal sequence:
-  ./update_statuses.py
+  ./fetch_tweets.py
   ./stats.py
   ./cluster.py
   ./tmpl.py < web/index.tmpl | sed 's/DATE/2017-03-28/g' > web/static/index.html

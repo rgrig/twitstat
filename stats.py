@@ -68,7 +68,7 @@ hostport = host + opt(':[0-9]+')
 URL_REGEX = 'http' + opt('s') + '://' + hostport + opt('/' + hpath + opt(r'\?' + hsegment))
 
 # hack
-URL_REGEX = 'https://t.co/[0-9a-zA-Z]+'
+#URL_REGEX = 'https://t.co/[0-9a-zA-Z]+'
 with open('stopwords', 'r') as f:
   STOPWORDS = set([x.strip() for x in f.readlines()])
 

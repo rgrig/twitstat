@@ -66,7 +66,7 @@ def main():
         url = '{}?geocode={}&count=100'.format(url_base, GEOCODE)
         page = get(url)
         save_page(db, idx, page['statuses'])
-        for i in range(2, 16):
+        for i in range(2, 64):
           if 'next_results' not in page['search_metadata']:
             break
           log('Waiting 25 seconds.')

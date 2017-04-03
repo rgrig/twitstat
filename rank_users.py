@@ -36,7 +36,9 @@ def dump_graph(g):
   n = len(g)
   with shelve.open('db/users') as users:
     def name(x):
-      if los[x] in users:
+      if x == n - 1:
+        return 'DUMMY'
+      elif los[x] in users:
         return users[los[x]].screen_name
       else:
         return 'unknown-{}'.format(los[x])
@@ -56,30 +58,40 @@ def build_graph():
     for t in tweets.values():
       for u in t.mention.users:
         g[sol[t.author]][sol[u]] += 1
+  for i in range(len(g)):
+    g[i][i] = 0
   ng = []
+  dummy = len(g)
   for oa in g:
     z = sum(oa.values())
-    ng.append([(tgt, v/z) for tgt,v in oa.items()])
+    na = [(tgt, v/z*(1-args.alpha)) for tgt,v in oa.items() if v != 0]
+    na.append((dummy, 1-sum(v for _, v in na)))
+    ng.append(na)
+  na = [(i, args.alpha/len(g)) for i in range(len(g))]
+  na.append((dummy, 1-sum(v for _, v in na)))
+  ng.append(na)
   return ng
 
 def pagerank(g):
   n = len(g)
-  nxt = [1/n]*n
+  nxt = [1]*n
   now = None
-  error = args.epsilon/n + 1
+  error = args.epsilon + 1
   iterations = 0
-  while error > args.epsilon/n:
+  while error > args.epsilon:
     iterations += 1
-    now, nxt = nxt, [args.alpha/n]*n
+    now, nxt = nxt, [0]*n
     for i in range(n):
       for j, f in g[i]:
-        nxt[j] += now[i] * f * (1 - args.alpha)
+        nxt[j] += now[i] * f
     error = max(abs(now[i]-nxt[i]) for i in range(n))
   sys.stderr.write('used {} iterations for {} users\n'.format(iterations, n))
+  if not (0.99 * n < sum(now) < 1.01 * n):
+    sys.stderr.write('W: numerical stability issues\n')
   return now
 
 def save(scores, toprint):
-  n = len(scores)
+  n = len(scores) - 1
   with shelve.open('db/userrank', 'n') as pr:
     for i in range(n):
       pr[los[i]] = scores[i]
@@ -90,8 +102,9 @@ def save(scores, toprint):
       else:
         return users[id].screen_name
     xs = sorted((-scores[i], sn(los[i])) for i in range(n))
+    sys.stderr.write('recycled sink-flow: avg {:.2f}\n'.format(scores[n]/(n+1)-args.alpha))
     for s, un in xs[:toprint]:
-      sys.stdout.write('{:8.6f} https://twitter.com/{}\n'.format(-s, un))
+      sys.stdout.write('{:8.1f} https://twitter.com/{}\n'.format(-s, un))
 
 
 def main():

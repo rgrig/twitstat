@@ -4,5 +4,3 @@ normal sequence:
   ./rank_users.py
   ./normalize_urls.py
   ./rank_urls.py
-  ./tmpl.py < web/index.tmpl | sed 's/DATE/2017-03-28/g' > web/static/index.html
-  google-chrome web/static/index.html

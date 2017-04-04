@@ -17,6 +17,8 @@ argparser.add_argument('-a', '--alpha', default=0.15, type=float,
   help='pagerank taxation (i.e. in-flow)')
 argparser.add_argument('-e', '--epsilon', default=0.001, type=float,
   help='error for convergence test')
+argparser.add_argument('-g', '--dumpgraph', action='store_true',
+  help='dump graph arcs to stderr')
 args = None
 
 # compress user ids to integers 0, 1, ...
@@ -31,8 +33,6 @@ def register_userid(l):
 
 def dump_graph(g):
   global los, sol
-  if True:
-    return
   n = len(g)
   with shelve.open('db/users') as users:
     def name(x):
@@ -102,7 +102,7 @@ def save(scores, toprint):
       else:
         return users[id].screen_name
     xs = sorted((-scores[i], sn(los[i])) for i in range(n))
-    sys.stderr.write('recycled sink-flow: avg {:.2f}\n'.format(scores[n]/(n+1)-args.alpha))
+    sys.stderr.write('recycled flow {:.1f}\n'.format(scores[n]*args.alpha))
     for s, un in xs[:toprint]:
       sys.stdout.write('{:8.1f} https://twitter.com/{}\n'.format(-s, un))
 
@@ -111,7 +111,8 @@ def main():
   global args
   args = argparser.parse_args()
   g = build_graph()
-  dump_graph(g)
+  if args.dumpgraph:
+    dump_graph(g)
   scores = pagerank(g)
   save(scores, args.toprint)
 

@@ -3,11 +3,12 @@
 
 from argparse import ArgumentParser
 from calendar import timegm
-from contextlib import closing
-from time import sleep, strptime
+from pathlib import Path
+from time import sleep, strptime, time
 from urllib.parse import quote
 
 import db
+import json
 import requests
 import shelve
 import sys
@@ -15,15 +16,31 @@ import sys
 argparser = ArgumentParser(description='''
   Fetch tweets that match a query, and add them to db/tweets.
 ''')
+
+defaultargs = {}
+configpath = Path('db/config.json')
+try:
+  with configpath.open() as config:
+    defaultargs = json.load(config)
+    if False:
+      print(defaultargs)
+except Exception as e:
+  sys.stderr.write('W: no db/config.json {}\n'.format(e))
+def argdef(k):
+  return defaultargs[k] if k in defaultargs else None
+
+
 argparser.add_argument('-q',
   help='query')
-argparser.add_argument('-geocode', default='44.447924,26.097879,150km',
-  help='e.g., 44.447924,26.097879,150km') # default = bucharest
-argparser.add_argument('-count', default=100, type=int,
+argparser.add_argument('-geocode', default=argdef('geocode'),
+  help='e.g., 44.447924,26.097879,150km')
+argparser.add_argument('-authors', default=argdef('authors'), nargs='+',
+  help='filter by author')
+argparser.add_argument('-count', default=argdef('count'), type=int,
   help='batch size')
-argparser.add_argument('-total', type=int,
+argparser.add_argument('-total', default=argdef('total'), type=int,
   help='total number of tweets to fetch')
-argparser.add_argument('-delay', default=3, type=int,
+argparser.add_argument('-delay', default=argdef('delay'), type=float,
   help='delay between batches, in seconds')
 argparser.add_argument('-verbose', action='store_true')
 
@@ -35,8 +52,14 @@ class Done(BaseException):  # used (rarely) for flow control
 
 oauth2_headers = None
 
-def get(url):
+last_get = None
+def get(url, delay):
   global oauth2_headers
+  global last_get
+  if last_get:
+    sleep(max(0, time() - delay - last_get))
+  if False:
+    print('GET ', url)
   if oauth2_headers is None:
     with open('secret.credentials') as f:
       for line in f:
@@ -50,13 +73,19 @@ def get(url):
   r = requests.get(url, headers=oauth2_headers)
   if verbose and 'x-rate-limit-remaining' in r.headers:
     sys.stderr.write('api-rate-limit-remaining {}\n'.format(r.headers['x-rate-limit-remaining']))
+  last_get = time()
   return r.json()
 
 
-def build_query(q, geocode, count):
+def build_query(q, geocode, count, authors):
   assert count is not None
   query = '?count={}'.format(count)
-  if q:
+  if authors:
+    if q is None:
+      q = ''
+    qs = ['{} from:{}'.format(q, a) for a in authors]
+    query += '&q={}'.format(quote(' OR '.join(qs)))
+  elif q:
     query += '&q={}'.format(quote(q))
   if geocode:
     query += '&geocode={}'.format(geocode)
@@ -128,31 +157,42 @@ def main():
   global verbose
   args = argparser.parse_args()
   verbose = args.verbose
-  query = build_query(args.q, args.geocode, args.count)
-  processed = 0
-  try:
-    with shelve.open('db/tweets') as tweets:
-      with shelve.open('db/raw') as raw:
-        page = get('{}{}'.format(SEARCH_API_URL, query))
-        while True:
-          check_times(page['statuses'])
-          for s in page['statuses']:
-            if s['id_str'] in tweets:
-              raise Done # assumes that times are descending
-            raw[s['id_str']] = s
-            processed += 1
-            if args.total and processed >= args.total:
+  if not args.authors:
+    args.authors = [[]]
+  else:
+    new_authors = []
+    i = 0
+    while i < len(args.authors):
+      new_authors.append(args.authors[i:i+5])
+      i += 5
+    args.authors = new_authors
+  args.total = 1 + args.total // len(args.authors)
+  for authors in args.authors:
+    processed = 0
+    sys.stderr.write('fetching {} from {}\n'.format(args.total, ' '.join(authors)))
+    query = build_query(args.q, args.geocode, args.count, authors)
+    try:
+      with shelve.open('db/tweets') as tweets:
+        with shelve.open('db/raw') as raw:
+          page = get('{}{}'.format(SEARCH_API_URL, query), args.delay)
+          while True:
+            check_times(page['statuses'])
+            for s in page['statuses']:
+              if s['id_str'] in tweets:
+                raise Done # assumes that times are descending
+              raw[s['id_str']] = s
+              processed += 1
+              if args.total and processed >= args.total:
+                raise Done
+            raw.sync()
+            sys.stderr.write('fetched {} tweets\n'.format(processed))
+            if 'next_results' not in page['search_metadata']:
+              sys.stderr.write('W: gap in tweet data; run me more often\n')
               raise Done
-          raw.sync()
-          sys.stderr.write('fetched {} tweets\n'.format(processed))
-          if 'next_results' not in page['search_metadata']:
-            sys.stderr.write('W: gap in tweet data; run me more often\n')
-            raise Done
-          sleep(args.delay)
-          query = page['search_metadata']['next_results']
-          page = get('{}{}'.format(SEARCH_API_URL, query))
-  except Done:
-    sys.stderr.write('fetched {} tweets (DONE)\n'.format(processed))
+            query = page['search_metadata']['next_results']
+            page = get('{}{}'.format(SEARCH_API_URL, query), args.delay)
+    except Done:
+      sys.stderr.write('fetched {} tweets (DONE)\n'.format(processed))
     postprocess_raw_tweets()
 
 if __name__ == '__main__':

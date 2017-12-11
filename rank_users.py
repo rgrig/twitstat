@@ -19,6 +19,8 @@ argparser.add_argument('-e', '--epsilon', default=0.001, type=float,
   help='error for convergence test')
 argparser.add_argument('-g', '--dumpgraph', action='store_true',
   help='dump graph arcs to stderr')
+argparser.add_argument('-r', '--dumpraw', action='store_true',
+  help='dump graph arcs to stderr, adjacency lists')
 args = None
 
 # compress user ids to integers 0, 1, ...
@@ -58,6 +60,13 @@ def build_graph():
     for t in tweets.values():
       for u in t.mention.users:
         g[sol[t.author]][sol[u]] += 1
+  if args.dumpraw:
+    sys.stderr.write('{}\n'.format(len(g)))
+    for d in g:
+      for k, v in d.items():
+        for _ in range(v):
+          sys.stderr.write('{} '.format(k + 1))
+      sys.stderr.write('0\n')
   for i in range(len(g)):
     g[i][i] = 0
   ng = []
@@ -102,7 +111,7 @@ def save(scores, toprint):
       else:
         return users[id].screen_name
     xs = sorted((-scores[i], sn(los[i])) for i in range(n))
-    sys.stderr.write('recycled flow {:.1f}\n'.format(scores[n]*args.alpha))
+    sys.stderr.write('lost flow {:.1f}\n'.format(scores[n]))
     for s, un in xs[:toprint]:
       sys.stdout.write('{:8.1f} https://twitter.com/{}\n'.format(-s, un))
 

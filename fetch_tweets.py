@@ -78,8 +78,10 @@ def get(url, delay):
 
 
 def build_query(q, geocode, count, authors):
+  query = ''
+  query += '?result_type=recent'
   assert count is not None
-  query = '?count={}'.format(count)
+  query += '&count={}'.format(count)
   if authors:
     if q is None:
       q = ''

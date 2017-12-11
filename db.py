@@ -1,6 +1,7 @@
 class User:
   def __init__(self, screen_name):
     self.screen_name = screen_name
+    # TODO: self.is_trusted = False
 
 class Mention:
   def __init__(self):

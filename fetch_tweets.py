@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 import db
 import json
+import os
 import requests
 import shelve
 import sys
@@ -144,7 +145,7 @@ def postprocess_raw_tweets():
             for u in t['quoted_status']['entities']['urls']:
               mention.urls.add(u['expanded_url'])
           tweets[i] = db.Tweet(text, time, author, mention)
-        del raw[i]
+  os.remove('db/raw')
 
 bad_times = False
 def check_times(tweets):

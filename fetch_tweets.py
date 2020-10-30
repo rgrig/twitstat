@@ -47,7 +47,10 @@ argparser.add_argument('-verbose', action='store_true')
 SEARCH_API_URL = 'https://api.twitter.com/1.1/search/tweets.json'
 verbose = None
 
-class Done(BaseException):  # used (rarely) for flow control
+# used (rarely) for flow control
+class Done(BaseException):
+  pass
+class NoNewResults(BaseException):
   pass
 
 oauth2_headers = None
@@ -162,12 +165,7 @@ def main():
   if not args.authors:
     args.authors = [[]]
   else:
-    new_authors = []
-    i = 0
-    while i < len(args.authors):
-      new_authors.append(args.authors[i:i+5])
-      i += 5
-    args.authors = new_authors
+    args.authors = [args.authors[i:i+5] for i in range(0,len(args.authors),5)]
   args.total = 1 + args.total // len(args.authors)
   for authors in args.authors:
     processed = 0
@@ -195,6 +193,8 @@ def main():
             page = get('{}{}'.format(SEARCH_API_URL, query), args.delay)
     except Done:
       sys.stderr.write('fetched {} tweets (DONE)\n'.format(processed))
+    except NoNewResults:
+      sys.stderr.write('no tweets to fetch\n')
     postprocess_raw_tweets()
 
 if __name__ == '__main__':

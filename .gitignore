@@ -1,0 +1,7 @@
+/db*
+/__pycache__
+secret.credentials
+histograms
+tmp
+transcript.txt
+/statuses

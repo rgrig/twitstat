@@ -138,6 +138,7 @@ def postprocess_raw_tweets():
             mention.users.add(t['retweeted_status']['user']['id_str'])
           if 'quoted_status' in t:
             mention.tweets.add(t['quoted_status']['id_str'])
+            mention.users.add(t['quoted_status']['user']['id_str'])
           tweets[i] = db.Tweet(text, time, author, mention)
         del raw[i]
 

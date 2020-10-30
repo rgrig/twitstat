@@ -8,7 +8,7 @@ import shutil
 import sys
 
 argparser = ArgumentParser(description='''
-  Extracts a time range from db/tweets and stores it in db/slice.
+Extracts a time range from db/tweets and stores it in db/slice.
 ''')
 
 defaulttime = 'xxxx0101000000'

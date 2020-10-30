@@ -13,6 +13,8 @@ argparser = ArgumentParser(description='''
 
 argparser.add_argument('-n', '--toprint', default=10, type=int,
   help='how many urls to report to stdout')
+argparser.add_argument('-e', '--endorsers', action='store_true',
+  help='report which twitter authors mentioned the url')
 
 def main():
   args = argparser.parse_args()
@@ -20,6 +22,12 @@ def main():
   with shelve.open('db/slice') as tweets:
     for t in tweets.values():
       urls_of_user[t.author].extend(t.mention.urls)
+  endorsers_of_url = defaultdict(set)
+  if args.endorsers:
+    with shelve.open('db/users') as users:
+      for u, ls in urls_of_user.items():
+        for l in ls:
+          endorsers_of_url[l].add(users[u].screen_name)
   if False:
     url_counts = defaultdict(int)
     for ls in urls_of_user.values():
@@ -50,7 +58,10 @@ def main():
   sys.stderr.write('ranked {} urls\n'.format(len(score_of_url)))
   xs = sorted((-s, l) for l, s in score_of_url.items())
   for s, l in xs[:args.toprint]:
-    sys.stdout.write('{:9.6f} {}\n'.format(-s, l))
+    sys.stdout.write('{:9.6f} {}'.format(-s, l))
+    for u in sorted(endorsers_of_url[l]):
+      sys.stdout.write(' {}'.format(u))
+    sys.stdout.write('\n')
 
 if __name__ == '__main__':
   main()

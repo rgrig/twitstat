@@ -136,9 +136,13 @@ def postprocess_raw_tweets():
           if 'retweeted_status' in t:
             mention.tweets.add(t['retweeted_status']['id_str'])
             mention.users.add(t['retweeted_status']['user']['id_str'])
+            for u in t['retweeted_status']['entities']['urls']:
+              mention.urls.add(u['expanded_url'])
           if 'quoted_status' in t:
             mention.tweets.add(t['quoted_status']['id_str'])
             mention.users.add(t['quoted_status']['user']['id_str'])
+            for u in t['quoted_status']['entities']['urls']:
+              mention.urls.add(u['expanded_url'])
           tweets[i] = db.Tweet(text, time, author, mention)
         del raw[i]
 

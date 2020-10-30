@@ -15,13 +15,17 @@ argparser.add_argument('-n', '--toprint', default=10, type=int,
   help='how many urls to report to stdout')
 argparser.add_argument('-e', '--endorsers', action='store_true',
   help='report which twitter authors mentioned the url')
+argparser.add_argument('-f', '--filter', default='twitter.com',
+  help='do not include urls containing a certain substring')
 
 def main():
   args = argparser.parse_args()
   urls_of_user = defaultdict(list)
   with shelve.open('db/slice') as tweets:
     for t in tweets.values():
-      urls_of_user[t.author].extend(t.mention.urls)
+      for u in t.mention.urls:
+        if u.find(args.filter) == -1:
+          urls_of_user[t.author].append(u)
   endorsers_of_url = defaultdict(set)
   if args.endorsers:
     with shelve.open('db/users') as users:

@@ -43,10 +43,14 @@ argparser.add_argument('-total', default=argdef('total'), type=int,
   help='total number of tweets to fetch')
 argparser.add_argument('-delay', default=argdef('delay'), type=float,
   help='delay between batches, in seconds')
+argparser.add_argument('-r', '--refetch', action='store_true',
+  help='refetch tweets even if we have them')
 argparser.add_argument('-verbose', action='store_true')
 
 SEARCH_API_URL = 'https://api.twitter.com/1.1/search/tweets.json'
 verbose = None
+
+args = None
 
 # used (rarely) for flow control
 class Done(BaseException):
@@ -120,7 +124,7 @@ def postprocess_raw_tweets():
     with shelve.open('db/tweets') as tweets:
       ids = list(raw.keys())
       for i in ids:
-        if i in tweets:
+        if not args.refetch and i in tweets:
           sys.stderr.write('W: tweet {} already in db\n'.format(i))
         else:
           t = raw[i]
@@ -165,6 +169,7 @@ def check_times(tweets):
 
 
 def main():
+  global args
   global verbose
   args = argparser.parse_args()
   verbose = args.verbose
@@ -184,7 +189,7 @@ def main():
           while True:
             check_times(page['statuses'])
             for s in page['statuses']:
-              if s['id_str'] in tweets:
+              if not args.refetch and s['id_str'] in tweets:
                 raise Done # assumes that times are descending
               raw[s['id_str']] = s
               processed += 1
@@ -193,7 +198,8 @@ def main():
             raw.sync()
             sys.stderr.write('fetched {} tweets\n'.format(processed))
             if 'next_results' not in page['search_metadata']:
-              sys.stderr.write('W: gap in tweet data; run me more often\n')
+              if not args.refetch:
+                sys.stderr.write('W: gap in tweet data; run me more often\n')
               raise Done
             query = page['search_metadata']['next_results']
             page = get('{}{}'.format(SEARCH_API_URL, query), args.delay)

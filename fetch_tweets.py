@@ -122,12 +122,10 @@ def postprocess_raw_tweets():
 
     # Update tweets.
     with shelve.open('db/tweets') as tweets:
-      ids = list(raw.keys())
-      for i in ids:
+      for i, t in raw.items():
         if not args.refetch and i in tweets:
           sys.stderr.write('W: tweet {} already in db\n'.format(i))
         else:
-          t = raw[i]
           text = t['text']
           time = time_of_raw_tweet(t)
           author = t['user']['id_str']

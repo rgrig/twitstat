@@ -17,6 +17,8 @@ argparser.add_argument('-e', '--endorsers', action='store_true',
   help='report which twitter authors mentioned the url')
 argparser.add_argument('-f', '--filter', default='twitter.com',
   help='do not include urls containing a certain substring')
+argparser.add_argument('-d', '--dump', action='store_true',
+  help='for each user, all urls they mention')
 
 def main():
   args = argparser.parse_args()
@@ -27,8 +29,14 @@ def main():
         if u.find(args.filter) == -1:
           urls_of_user[t.author].append(u)
   endorsers_of_url = defaultdict(set)
-  if args.endorsers:
-    with shelve.open('db/users') as users:
+  with shelve.open('db/users') as users:
+    if args.dump:
+      for u, ls in urls_of_user.items():
+        sys.stdout.write(users[u].screen_name)
+        for l in ls:
+          sys.stdout.write(' {}'.format(l))
+        sys.stdout.write('\n')
+    if args.endorsers:
       for u, ls in urls_of_user.items():
         for l in ls:
           endorsers_of_url[l].add(users[u].screen_name)

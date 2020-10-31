@@ -46,6 +46,8 @@ argparser.add_argument('-delay', default=argdef('delay'), type=float,
 argparser.add_argument('-r', '--refetch', action='store_true',
   help='refetch tweets even if we have them')
 argparser.add_argument('-verbose', action='store_true')
+argparser.add_argument('-d', '--debug', action='store_true',
+  help='print to stderr how tweets are parsed')
 
 SEARCH_API_URL = 'https://api.twitter.com/1.1/search/tweets.json'
 verbose = None
@@ -146,7 +148,11 @@ def postprocess_raw_tweets():
             mention.users.add(t['quoted_status']['user']['id_str'])
             for u in t['quoted_status']['entities']['urls']:
               mention.urls.add(u['expanded_url'])
-          tweets[i] = db.Tweet(text, time, author, mention)
+          parsed = db.Tweet(text, time, author, mention)
+          tweets[i] = parsed
+          if args.debug:
+            json.dump({'in':t, 'out':parsed.as_dict()}, sys.stderr)
+            sys.stderr.write('\n')
   os.remove('db/raw')
 
 bad_times = False

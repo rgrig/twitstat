@@ -76,8 +76,7 @@ def build_graph():
     na = [(tgt, v/z*(1-args.alpha)) for tgt,v in oa.items() if v != 0]
     na.append((dummy, 1-sum(v for _, v in na)))
     ng.append(na)
-  na = [(i, args.alpha/len(g)) for i in range(len(g))]
-  na.append((dummy, 1-sum(v for _, v in na)))
+  na = [(i, 1/len(g)) for i in range(len(g))]
   ng.append(na)
   return ng
 
